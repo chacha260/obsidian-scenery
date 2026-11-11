@@ -1,14 +1,18 @@
-export type WallpaperType = "image" | "video" | "web" | "effect" | "scene";
+export type WallpaperType = "image" | "video" | "web" | "effect" | "scene" | "package";
 export type FitMode = "cover" | "contain" | "fill";
 
 export interface WallpaperItem {
   id: string;
   name: string;
   type: WallpaperType;
-  /** Vault path, absolute path, URL, or effect id. Empty for scenes. */
+  /** Vault path, absolute path, URL, effect id, or package folder. Empty for scenes. */
   source: string;
   /** Layers of a scene, bottom first. */
   scene?: SceneLayer[];
+  /** Packages: values the user chose for the properties declared in scenery.json. */
+  values?: Record<string, unknown>;
+  /** Packages: the user allowed this wallpaper to learn which note is open. */
+  allowNote?: boolean;
 }
 
 export type LayerKind = "image" | "video" | "effect" | "color";
@@ -99,6 +103,8 @@ export interface ScenerySettings {
   slideshow: boolean;
   intervalMinutes: number;
   shuffle: boolean;
+  /** Vault folder where new wallpaper packages are created. */
+  packageFolder: string;
 }
 
 export const EFFECT_IDS = ["aurora", "starfield", "particles", "snow", "fireflies", "rain"] as const;
@@ -127,6 +133,7 @@ export const DEFAULT_SETTINGS: ScenerySettings = {
   slideshow: false,
   intervalMinutes: 10,
   shuffle: false,
+  packageFolder: "Scenery",
 };
 
 export const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg"];

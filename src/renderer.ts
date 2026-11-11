@@ -1,6 +1,7 @@
 import { App, Notice } from "obsidian";
 import { EffectPlayer } from "./effects";
 import { t } from "./i18n";
+import { buildDocument, loadPackage, NoteInfo, PackageManifest, PackageState, readTheme, resolveValues } from "./package";
 import { SceneRuntime } from "./scene";
 import { resolveSource } from "./source";
 import type { ScenerySettings, WallpaperItem } from "./types";
@@ -12,6 +13,8 @@ interface Layer {
   video?: HTMLVideoElement;
   effect?: EffectPlayer;
   scene?: SceneRuntime;
+  /** Set for packages: the frame speaks the scenery message protocol. */
+  pkg?: { frame: HTMLIFrameElement; item: WallpaperItem; manifest: PackageManifest };
 }
 
 export class Renderer {
@@ -23,7 +26,63 @@ export class Renderer {
   private paused = false;
   private pointerFrame = 0;
 
-  constructor(private app: App, private getSettings: () => ScenerySettings) {}
+  private pointer = { x: 0.5, y: 0.5 };
+
+  constructor(
+    private app: App,
+    private getSettings: () => ScenerySettings,
+    private getNote: () => NoteInfo | null
+  ) {}
+
+  private noteFor(item: WallpaperItem, manifest: PackageManifest): NoteInfo | null {
+    return item.allowNote && manifest.permissions?.includes("note") ? this.getNote() : null;
+  }
+
+  private post(key: keyof PackageState, value: unknown) {
+    // The frame is sandboxed with an opaque origin, so "*" is the only target that reaches it.
+    this.current?.pkg?.frame.contentWindow?.postMessage({ scenery: 1, key, value }, "*");
+  }
+
+  /** Re-send property values and note access after the user changed them. */
+  updatePackage(item: WallpaperItem, manifest: PackageManifest) {
+    const pkg = this.current?.pkg;
+    if (!pkg || pkg.item.id !== item.id) return;
+    pkg.manifest = manifest;
+    this.post("props", resolveValues(manifest, item.values));
+    this.post("note", this.noteFor(item, manifest));
+  }
+
+  noteChanged() {
+    const pkg = this.current?.pkg;
+    if (pkg) this.post("note", this.noteFor(pkg.item, pkg.manifest));
+  }
+
+  /** Load the current wallpaper again, e.g. after its files changed on disk. */
+  reload(item: WallpaperItem | null) {
+    this.currentKey = "";
+    this.show(item);
+  }
+
+  private async showPackage(item: WallpaperItem, layer: Layer, reveal: () => void, fail: () => void) {
+    try {
+      const { manifest, html, baseUrl } = await loadPackage(this.app, item.source);
+      const frame = layer.el.createEl("iframe", { cls: "scenery-media" });
+      // Scripts may run, but the page gets an opaque origin: no access to the vault or the app.
+      frame.setAttribute("sandbox", "allow-scripts");
+      layer.pkg = { frame, item, manifest };
+      frame.addEventListener("load", reveal, { once: true });
+      frame.srcdoc = buildDocument(html, baseUrl, {
+        props: resolveValues(manifest, item.values),
+        theme: readTheme(),
+        note: this.noteFor(item, manifest),
+        paused: this.paused,
+        pointer: this.pointer,
+      });
+    } catch (e) {
+      console.error("Scenery: could not load package", item.source, e);
+      fail();
+    }
+  }
 
   mount() {
     if (this.root) return;
@@ -57,7 +116,7 @@ export class Renderer {
     style.setProperty("--scenery-fit", s.fit);
     style.setProperty("--scenery-bleed", `${s.parallax + s.blur * 2}px`);
     document.body.style.setProperty("--scenery-panel", `${s.panelTint}%`);
-    if (s.parallax === 0) this.setPointer(0.5, 0.5);
+    this.applyPointer();
     const layer = this.current;
     if (layer?.video) this.configureVideo(layer.video);
     if (layer?.effect) layer.effect.fps = s.fps;
@@ -109,6 +168,11 @@ export class Renderer {
       }
     };
     this.current = layer;
+
+    if (item.type === "package") {
+      void this.showPackage(item, layer, reveal, fail);
+      return;
+    }
 
     if (item.type === "scene") {
       layer.scene = new SceneRuntime(this.app, el, this.getSettings);
@@ -169,6 +233,7 @@ export class Renderer {
     const layer = this.current;
     if (!layer) return;
     layer.scene?.setPaused(paused);
+    this.post("paused", paused);
     if (paused) {
       layer.video?.pause();
       layer.effect?.stop();
@@ -181,17 +246,22 @@ export class Renderer {
   themeChanged() {
     this.current?.effect?.refreshPalette();
     this.current?.scene?.themeChanged();
+    this.post("theme", readTheme());
+  }
+
+  private applyPointer() {
+    const range = this.getSettings().parallax;
+    this.root?.style.setProperty("--scenery-px", `${(0.5 - this.pointer.x) * 2 * range}px`);
+    this.root?.style.setProperty("--scenery-py", `${(0.5 - this.pointer.y) * 2 * range}px`);
   }
 
   /** x and y are pointer positions in the 0..1 range. */
   setPointer(x: number, y: number) {
-    const root = this.root;
-    if (!root) return;
-    const range = this.getSettings().parallax;
+    this.pointer = { x, y };
     cancelAnimationFrame(this.pointerFrame);
     this.pointerFrame = requestAnimationFrame(() => {
-      root.style.setProperty("--scenery-px", `${(0.5 - x) * 2 * range}px`);
-      root.style.setProperty("--scenery-py", `${(0.5 - y) * 2 * range}px`);
+      this.applyPointer();
+      this.post("pointer", this.pointer);
     });
   }
 }

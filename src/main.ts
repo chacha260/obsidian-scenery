@@ -1,7 +1,9 @@
-import { FuzzySuggestModal, Plugin, TFile, debounce } from "obsidian";
+import { FuzzySuggestModal, Modal, Notice, Plugin, Setting, TFile, debounce, normalizePath } from "obsidian";
 import { EDITOR_VIEW, SceneEditorView } from "./editor";
 import { t } from "./i18n";
+import { MANIFEST_FILE, NoteInfo, PackageManifest } from "./package";
 import { Renderer } from "./renderer";
+import { TEMPLATE_HTML, templateManifest } from "./template";
 import { ScenerySettingTab } from "./settings";
 import { DEFAULT_SETTINGS, detectType, newLayer, ScenerySettings, uid, WallpaperItem } from "./types";
 
@@ -21,6 +23,32 @@ class WallpaperPicker extends FuzzySuggestModal<WallpaperItem> {
   }
 }
 
+class NameModal extends Modal {
+  private name = "";
+  constructor(plugin: SceneryPlugin, private onSubmit: (name: string) => void) {
+    super(plugin.app);
+  }
+  onOpen() {
+    this.setTitle(t("cmd.newPackage"));
+    const submit = () => {
+      if (!this.name) return;
+      this.close();
+      this.onSubmit(this.name);
+    };
+    new Setting(this.contentEl).setName(t("editor.name")).addText((text) => {
+      text.onChange((v) => (this.name = v.trim()));
+      text.inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.isComposing) submit();
+      });
+      window.setTimeout(() => text.inputEl.focus());
+    });
+    new Setting(this.contentEl).addButton((b) => b.setButtonText(t("pkg.create")).setCta().onClick(submit));
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 export default class SceneryPlugin extends Plugin {
   settings: ScenerySettings = DEFAULT_SETTINGS;
   private renderer!: Renderer;
@@ -32,7 +60,7 @@ export default class SceneryPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    this.renderer = new Renderer(this.app, () => this.settings);
+    this.renderer = new Renderer(this.app, () => this.settings, () => this.noteInfo());
     this.addSettingTab(new ScenerySettingTab(this.app, this));
     this.registerView(EDITOR_VIEW, (leaf) => new SceneEditorView(leaf, this));
     this.addCommand({ id: "new-scene", name: t("cmd.newScene"), callback: () => void this.createScene() });
@@ -73,14 +101,29 @@ export default class SceneryPlugin extends Plugin {
       })
     );
     this.registerEvent(this.app.workspace.on("css-change", () => this.renderer.themeChanged()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.renderer.noteChanged()));
+
+    this.addCommand({
+      id: "new-package",
+      name: t("cmd.newPackage"),
+      callback: () => new NameModal(this, (name) => void this.createPackage(name)).open(),
+    });
+    this.addCommand({ id: "reload", name: t("cmd.reload"), callback: () => this.reloadWallpaper() });
+    // Authoring loop: saving a file of the active package reloads the wallpaper.
+    const reloadSoon = debounce(() => this.reloadWallpaper(), 400, true);
+    const onFileChange = (file: { path: string }) => {
+      const active = this.activeItem;
+      if (this.settings.enabled && active?.type === "package" && file.path.startsWith(`${active.source}/`)) reloadSoon();
+    };
+    this.registerEvent(this.app.vault.on("modify", onFileChange));
+    this.registerEvent(this.app.vault.on("create", onFileChange));
+    this.registerEvent(this.app.vault.on("delete", onFileChange));
 
     this.registerDomEvent(window, "blur", () => this.updatePaused());
     this.registerDomEvent(window, "focus", () => this.updatePaused());
     this.registerDomEvent(document, "visibilitychange", () => this.updatePaused());
     this.registerDomEvent(document, "mousemove", (e) => {
-      if (this.settings.parallax > 0) {
-        this.renderer.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
-      }
+      this.renderer.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
     });
 
     this.app.workspace.onLayoutReady(() => this.refresh());
@@ -120,6 +163,44 @@ export default class SceneryPlugin extends Plugin {
       this.renderer.unmount();
     }
     this.restartSlideshow();
+  }
+
+  private noteInfo(): NoteInfo | null {
+    const file = this.app.workspace.getActiveFile();
+    return file ? { name: file.basename, path: file.path } : null;
+  }
+
+  reloadWallpaper() {
+    if (this.settings.enabled) this.renderer.reload(this.activeItem);
+  }
+
+  /** Called by the settings tab after the user changed a package's values. */
+  packageChanged(item: WallpaperItem, manifest: PackageManifest) {
+    this.renderer.updatePackage(item, manifest);
+    this.saveSoon();
+  }
+
+  /** Create a working example package in the vault and show it. Returns its folder, or null. */
+  async createPackage(name: string): Promise<string | null> {
+    const { vault } = this.app;
+    const safe = name.replace(/[\\/:*?"<>|#^[\]]/g, "-").trim();
+    if (!safe) return null;
+    const folder = normalizePath(`${this.settings.packageFolder || "Scenery"}/${safe}`);
+    if (await vault.adapter.exists(folder)) {
+      new Notice(t("pkg.exists", { path: folder }));
+      return null;
+    }
+    // createFolder does not create missing parents.
+    let path = "";
+    for (const part of folder.split("/")) {
+      path = path ? `${path}/${part}` : part;
+      if (!(await vault.adapter.exists(path))) await vault.createFolder(path);
+    }
+    await vault.create(`${folder}/${MANIFEST_FILE}`, JSON.stringify(templateManifest(name), null, 2) + "\n");
+    await vault.create(`${folder}/index.html`, TEMPLATE_HTML);
+    await this.setActive(this.addItems([folder], "package", name)[0]);
+    new Notice(t("pkg.created", { path: folder }));
+    return folder;
   }
 
   /** Called by the editor after it mutated a scene in place. */

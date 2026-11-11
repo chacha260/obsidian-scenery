@@ -1,8 +1,9 @@
-import { App, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
+import { loadManifest, MANIFEST_FILE, PackageManifest, resolveValues, selectOptions } from "./package";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
 import { FilePicker, FolderPicker } from "./pickers";
-import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, WallpaperType } from "./types";
+import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, WallpaperItem, WallpaperType } from "./types";
 
 class UrlModal extends Modal {
   private source = "";
@@ -102,6 +103,97 @@ export class ScenerySettingTab extends PluginSettingTab {
       );
   }
 
+  /** Controls generated from the properties a package declares in scenery.json. */
+  private async renderPackage(el: HTMLElement, item: WallpaperItem) {
+    const { plugin } = this;
+    let manifest: PackageManifest;
+    try {
+      manifest = await loadManifest(this.app, item.source);
+    } catch (e) {
+      new Setting(el).setName(item.name).setHeading();
+      el.createEl("p", { text: `${t("pkg.badManifest")} ${String(e)}`, cls: "setting-item-description" });
+      return;
+    }
+    const redraw = () => {
+      el.empty();
+      void this.renderPackage(el, item);
+    };
+    const changed = () => plugin.packageChanged(item, manifest);
+    const values = resolveValues(manifest, item.values);
+    const set = (key: string, value: unknown) => {
+      (item.values ??= {})[key] = value;
+      changed();
+    };
+
+    const about = [manifest.description, manifest.author && `by ${manifest.author}`, manifest.version && `v${manifest.version}`];
+    const head = new Setting(el)
+      .setName(t("pkg.settings", { name: item.name }))
+      .setDesc(about.filter(Boolean).join(" · "))
+      .setHeading()
+      .addExtraButton((b) =>
+        b
+          .setIcon("refresh-cw")
+          .setTooltip(t("cmd.reload"))
+          .onClick(() => {
+            plugin.reloadWallpaper();
+            redraw();
+          })
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon("rotate-ccw")
+          .setTooltip(t("pkg.reset"))
+          .onClick(() => {
+            item.values = {};
+            changed();
+            redraw();
+          })
+      );
+    if (Platform.isDesktopApp) {
+      head.addExtraButton((b) =>
+        b
+          .setIcon("folder-open")
+          .setTooltip(t("pkg.openFolder"))
+          .onClick(() => {
+            // Not in the public API, hence the guarded call.
+            (this.app as unknown as { showInFolder?: (path: string) => void }).showInFolder?.(`${item.source}/${MANIFEST_FILE}`);
+          })
+      );
+    }
+
+    for (const [key, p] of Object.entries(manifest.properties ?? {})) {
+      const setting = new Setting(el).setName(p.label || key);
+      if (p.description) setting.setDesc(p.description);
+      if (p.type === "slider") {
+        setting.addSlider((sl) => {
+          sl.setLimits(p.min ?? 0, p.max ?? 100, p.step ?? 1).setValue(values[key] as number).setDynamicTooltip();
+          sl.sliderEl.addEventListener("input", () => set(key, Number(sl.sliderEl.value)));
+          sl.onChange((v) => set(key, v));
+        });
+      } else if (p.type === "toggle") {
+        setting.addToggle((tg) => tg.setValue(values[key] as boolean).onChange((v) => set(key, v)));
+      } else if (p.type === "color") {
+        setting.addColorPicker((c) => c.setValue(values[key] as string).onChange((v) => set(key, v)));
+      } else if (p.type === "select") {
+        setting.addDropdown((d) => d.addOptions(selectOptions(p)).setValue(values[key] as string).onChange((v) => set(key, v)));
+      } else {
+        setting.addText((tx) => tx.setValue(values[key] as string).onChange((v) => set(key, v)));
+      }
+    }
+
+    if (manifest.permissions?.includes("note")) {
+      new Setting(el)
+        .setName(t("pkg.allowNote"))
+        .setDesc(t("pkg.allowNote.desc"))
+        .addToggle((tg) =>
+          tg.setValue(!!item.allowNote).onChange((v) => {
+            item.allowNote = v;
+            changed();
+          })
+        );
+    }
+  }
+
   private async addAndShow(sources: string[], type?: WallpaperType, name?: string) {
     const before = this.plugin.settings.items.length;
     const ids = this.plugin.addItems(sources, type, name);
@@ -188,7 +280,13 @@ export class ScenerySettingTab extends PluginSettingTab {
       )
       .addButton((b) =>
         b.setButtonText(t("set.add.folder")).onClick(() => {
-          new FolderPicker(this.app, (folder) => {
+          new FolderPicker(this.app, async (folder) => {
+            // A folder holding scenery.json is a wallpaper package, not a pile of media.
+            if (!folder.isRoot() && (await this.app.vault.adapter.exists(`${folder.path}/${MANIFEST_FILE}`))) {
+              const name = await loadManifest(this.app, folder.path).then((m) => m.name, () => undefined);
+              void this.addAndShow([folder.path], "package", name || folder.name);
+              return;
+            }
             const prefix = folder.isRoot() ? "" : folder.path + "/";
             const paths = this.app.vault
               .getFiles()
@@ -202,6 +300,12 @@ export class ScenerySettingTab extends PluginSettingTab {
       .addButton((b) =>
         b.setButtonText(t("set.add.url")).onClick(() => {
           new UrlModal(this.app, (source, type, name) => void this.addAndShow([source], type, name)).open();
+        })
+      )
+      .addButton((b) =>
+        b.setButtonText(t("cmd.newPackage")).onClick(async () => {
+          const name = `${t("type.package")} ${s.items.filter((i) => i.type === "package").length + 1}`;
+          if (await plugin.createPackage(name)) this.display();
         })
       )
       .addButton((b) =>
@@ -225,6 +329,9 @@ export class ScenerySettingTab extends PluginSettingTab {
             this.display();
           })
       );
+
+    const active = plugin.activeItem;
+    if (active?.type === "package") void this.renderPackage(containerEl.createDiv(), active);
 
     // ---- Appearance ----
     new Setting(containerEl).setName(t("set.appearance")).setHeading();
