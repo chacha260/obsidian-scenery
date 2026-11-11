@@ -1,37 +1,8 @@
-import { App, FuzzySuggestModal, Modal, Notice, PluginSettingTab, Setting, TFile, TFolder } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
+import { FilePicker, FolderPicker } from "./pickers";
 import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, WallpaperType } from "./types";
-
-class FilePicker extends FuzzySuggestModal<TFile> {
-  constructor(app: App, private onPick: (file: TFile) => void) {
-    super(app);
-  }
-  getItems() {
-    return this.app.vault.getFiles().filter((f) => detectType(f.path));
-  }
-  getItemText(file: TFile) {
-    return file.path;
-  }
-  onChooseItem(file: TFile) {
-    this.onPick(file);
-  }
-}
-
-class FolderPicker extends FuzzySuggestModal<TFolder> {
-  constructor(app: App, private onPick: (folder: TFolder) => void) {
-    super(app);
-  }
-  getItems() {
-    return this.app.vault.getAllLoadedFiles().filter((f): f is TFolder => f instanceof TFolder);
-  }
-  getItemText(folder: TFolder) {
-    return folder.path;
-  }
-  onChooseItem(folder: TFolder) {
-    this.onPick(folder);
-  }
-}
 
 class UrlModal extends Modal {
   private source = "";
@@ -88,6 +59,11 @@ type NumericKey = {
 export class ScenerySettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: SceneryPlugin) {
     super(app, plugin);
+  }
+
+  private closeSettings() {
+    // No public API closes the settings window; this one is long-standing and widely used.
+    (this.app as unknown as { setting?: { close?: () => void } }).setting?.close?.();
   }
 
   private async commit(full = false) {
@@ -162,7 +138,23 @@ export class ScenerySettingTab extends PluginSettingTab {
       const active = item.id === s.activeId;
       const row = new Setting(containerEl)
         .setName(item.name)
-        .setDesc(`${t(`type.${item.type}`)} · ${item.source}`)
+        .setDesc(
+          item.type === "scene"
+            ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
+            : `${t(`type.${item.type}`)} · ${item.source}`
+        );
+      if (item.type === "scene") {
+        row.addExtraButton((b) =>
+          b
+            .setIcon("pencil")
+            .setTooltip(t("cmd.editScene"))
+            .onClick(() => {
+              this.closeSettings();
+              void plugin.openEditor(item.id);
+            })
+        );
+      }
+      row
         .addButton((b) => {
           b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
           if (active) b.setCta();
@@ -191,7 +183,7 @@ export class ScenerySettingTab extends PluginSettingTab {
       .setDesc(t("set.add.desc"))
       .addButton((b) =>
         b.setButtonText(t("set.add.file")).onClick(() => {
-          new FilePicker(this.app, (file) => void this.addAndShow([file.path])).open();
+          new FilePicker(this.app, null, (file) => void this.addAndShow([file.path])).open();
         })
       )
       .addButton((b) =>
@@ -211,6 +203,15 @@ export class ScenerySettingTab extends PluginSettingTab {
         b.setButtonText(t("set.add.url")).onClick(() => {
           new UrlModal(this.app, (source, type, name) => void this.addAndShow([source], type, name)).open();
         })
+      )
+      .addButton((b) =>
+        b
+          .setButtonText(t("cmd.newScene"))
+          .setCta()
+          .onClick(() => {
+            this.closeSettings();
+            void plugin.createScene();
+          })
       )
       .addExtraButton((b) =>
         b

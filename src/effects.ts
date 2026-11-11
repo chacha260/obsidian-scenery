@@ -5,24 +5,48 @@ type RGB = [number, number, number];
 interface Palette {
   bg: RGB;
   accent: RGB;
+  /** Colour for neutral marks such as stars and snow. */
+  fg: RGB;
   dark: boolean;
+  /** Scene layers draw on a clear canvas so lower layers show through. */
+  transparent: boolean;
 }
 
 /** Resolve a theme CSS variable to concrete RGB via a throwaway element. */
-function resolveColor(cssVar: string, fallback: RGB): RGB {
+function resolveColor(color: string, fallback: RGB): RGB {
   const probe = document.body.createDiv();
-  probe.style.color = `var(${cssVar})`;
+  probe.style.color = color;
   const m = getComputedStyle(probe).color.match(/[\d.]+/g);
   probe.remove();
   return m && m.length >= 3 ? [Number(m[0]), Number(m[1]), Number(m[2])] : fallback;
 }
 
-function readPalette(): Palette {
+export interface EffectOptions {
+  transparent?: boolean;
+  /** CSS colour overriding the theme accent. */
+  tint?: string | null;
+}
+
+function readPalette(o: EffectOptions): Palette {
+  const dark = document.body.classList.contains("theme-dark");
+  const accent = resolveColor(o.tint || "var(--interactive-accent)", [138, 92, 245]);
   return {
-    bg: resolveColor("--background-primary", [30, 30, 30]),
-    accent: resolveColor("--interactive-accent", [138, 92, 245]),
-    dark: document.body.classList.contains("theme-dark"),
+    bg: resolveColor("var(--background-primary)", [30, 30, 30]),
+    accent,
+    fg: o.tint ? accent : dark ? [255, 255, 255] : accent,
+    dark,
+    transparent: !!o.transparent,
   };
+}
+
+function clear(ctx: CanvasRenderingContext2D, w: number, h: number, p: Palette) {
+  ctx.globalCompositeOperation = "source-over";
+  if (p.transparent) {
+    ctx.clearRect(0, 0, w, h);
+  } else {
+    ctx.fillStyle = rgba(p.bg, 1);
+    ctx.fillRect(0, 0, w, h);
+  }
 }
 
 const rgba = (c: RGB, a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -55,10 +79,8 @@ function aurora(): Draw {
     r: 0.35 + Math.random() * 0.3,
   }));
   return (ctx, w, h, time, _dt, p) => {
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = rgba(p.bg, 1);
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = p.dark ? "lighter" : "multiply";
+    clear(ctx, w, h, p);
+    ctx.globalCompositeOperation = p.dark || p.transparent ? "lighter" : "multiply";
     const size = Math.max(w, h);
     for (const b of blobs) {
       const x = w * (0.5 + b.ax * 1.6 * Math.sin(time * b.sx * 2 + b.ph));
@@ -83,9 +105,8 @@ function starfield(): Draw {
     tw: Math.random() * Math.PI * 2,
   }));
   return (ctx, w, h, time, dt, p) => {
-    ctx.fillStyle = rgba(p.bg, 1);
-    ctx.fillRect(0, 0, w, h);
-    const fg: RGB = p.dark ? [255, 255, 255] : p.accent;
+    clear(ctx, w, h, p);
+    const fg = p.fg;
     const cx = w / 2;
     const cy = h / 2;
     const scale = Math.max(w, h) * 0.6;
@@ -117,8 +138,7 @@ function particles(): Draw {
     vy: (Math.random() - 0.5) * 0.02,
   }));
   return (ctx, w, h, _time, dt, p) => {
-    ctx.fillStyle = rgba(p.bg, 1);
-    ctx.fillRect(0, 0, w, h);
+    clear(ctx, w, h, p);
     const link = Math.max(w, h) * 0.11;
     for (const a of pts) {
       a.x = (a.x + a.vx * dt + 1) % 1;
@@ -156,15 +176,16 @@ function snow(): Draw {
     sway: Math.random() * Math.PI * 2,
   }));
   return (ctx, w, h, time, dt, p) => {
-    const top = rotateHue(p.accent, -20);
-    ctx.fillStyle = rgba(p.bg, 1);
-    ctx.fillRect(0, 0, w, h);
-    const glow = ctx.createLinearGradient(0, 0, 0, h);
-    glow.addColorStop(0, rgba(top, 0.28));
-    glow.addColorStop(1, rgba(top, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, w, h);
-    const fg: RGB = p.dark ? [255, 255, 255] : p.accent;
+    clear(ctx, w, h, p);
+    if (!p.transparent) {
+      const top = rotateHue(p.accent, -20);
+      const glow = ctx.createLinearGradient(0, 0, 0, h);
+      glow.addColorStop(0, rgba(top, 0.28));
+      glow.addColorStop(1, rgba(top, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, w, h);
+    }
+    const fg = p.fg;
     for (const f of flakes) {
       f.y += f.v * dt * (0.6 + f.r / 3);
       if (f.y > 1.02) {
@@ -180,13 +201,77 @@ function snow(): Draw {
   };
 }
 
-const FACTORIES: Record<EffectId, () => Draw> = { aurora, starfield, particles, snow };
+function fireflies(): Draw {
+  const flies = Array.from({ length: 46 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    dir: Math.random() * Math.PI * 2,
+    turn: (Math.random() - 0.5) * 0.8,
+    v: 0.008 + Math.random() * 0.02,
+    r: 0.006 + Math.random() * 0.012,
+    ph: Math.random() * Math.PI * 2,
+    rate: 0.4 + Math.random() * 1.2,
+  }));
+  return (ctx, w, h, time, dt, p) => {
+    clear(ctx, w, h, p);
+    ctx.globalCompositeOperation = p.dark || p.transparent ? "lighter" : "source-over";
+    const size = Math.max(w, h);
+    for (const f of flies) {
+      f.dir += f.turn * dt + Math.sin(time * 0.7 + f.ph) * 0.6 * dt;
+      f.x = (f.x + Math.cos(f.dir) * f.v * dt + 1) % 1;
+      f.y = (f.y + Math.sin(f.dir) * f.v * dt + 1) % 1;
+      const glow = 0.25 + 0.75 * Math.max(0, Math.sin(time * f.rate + f.ph));
+      const x = f.x * w;
+      const y = f.y * h;
+      const r = f.r * size;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, rgba(p.accent, glow));
+      g.addColorStop(0.25, rgba(p.accent, glow * 0.45));
+      g.addColorStop(1, rgba(p.accent, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  };
+}
+
+function rain(): Draw {
+  const drops = Array.from({ length: 260 }, () => ({
+    x: Math.random() * 1.3,
+    y: Math.random(),
+    len: 0.02 + Math.random() * 0.05,
+    v: 0.9 + Math.random() * 0.9,
+    a: 0.15 + Math.random() * 0.45,
+  }));
+  return (ctx, w, h, _time, dt, p) => {
+    clear(ctx, w, h, p);
+    ctx.lineWidth = Math.max(1, w / 1400);
+    ctx.lineCap = "round";
+    const slant = 0.18;
+    for (const d of drops) {
+      d.y += d.v * dt;
+      if (d.y > 1 + d.len) {
+        d.y = -d.len;
+        d.x = Math.random() * 1.3;
+      }
+      const x = (d.x - d.y * slant) * w;
+      const y = d.y * h;
+      ctx.strokeStyle = rgba(p.fg, d.a);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + d.len * slant * w, y - d.len * h);
+      ctx.stroke();
+    }
+  };
+}
+
+const FACTORIES: Record<EffectId, () => Draw> = { aurora, starfield, particles, snow, fireflies, rain };
 
 export class EffectPlayer {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private draw: Draw;
-  private palette = readPalette();
+  private palette: Palette;
   private raf = 0;
   private last = 0;
   private time = 0;
@@ -194,7 +279,8 @@ export class EffectPlayer {
   private observer: ResizeObserver;
   fps = 30;
 
-  constructor(parent: HTMLElement, id: string) {
+  constructor(parent: HTMLElement, id: string, private options: EffectOptions = {}) {
+    this.palette = readPalette(options);
     this.canvas = parent.createEl("canvas", { cls: "scenery-media" });
     this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;
     this.draw = (FACTORIES[id as EffectId] ?? aurora)();
@@ -216,8 +302,14 @@ export class EffectPlayer {
 
   /** Re-read theme colours (call when the theme changes). */
   refreshPalette() {
-    this.palette = readPalette();
+    this.palette = readPalette(this.options);
     this.render(0);
+  }
+
+  setTint(tint: string | null) {
+    if (tint === (this.options.tint ?? null)) return;
+    this.options.tint = tint;
+    this.refreshPalette();
   }
 
   private render(dt: number) {

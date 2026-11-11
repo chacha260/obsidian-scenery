@@ -1,26 +1,17 @@
-import { App, Notice, Platform, TFile, normalizePath } from "obsidian";
+import { App, Notice } from "obsidian";
 import { EffectPlayer } from "./effects";
 import { t } from "./i18n";
+import { SceneRuntime } from "./scene";
+import { resolveSource } from "./source";
 import type { ScenerySettings, WallpaperItem } from "./types";
 
 const FADE_MS = 1200;
-
-/** Turn a vault path, absolute path or URL into something an element can load. */
-export function resolveSource(app: App, source: string): string {
-  if (/^(https?|data|blob|app|file):/i.test(source)) return source;
-  const file = app.vault.getAbstractFileByPath(normalizePath(source));
-  if (file instanceof TFile) return app.vault.getResourcePath(file);
-  if (/^(\/|[A-Za-z]:[\\/])/.test(source)) {
-    const path = source.replace(/\\/g, "/").replace(/^\//, "");
-    return Platform.resourcePathPrefix + encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F");
-  }
-  return source;
-}
 
 interface Layer {
   el: HTMLElement;
   video?: HTMLVideoElement;
   effect?: EffectPlayer;
+  scene?: SceneRuntime;
 }
 
 export class Renderer {
@@ -39,6 +30,7 @@ export class Renderer {
     this.root = createDiv({ cls: "scenery-root" });
     this.stage = this.root.createDiv({ cls: "scenery-stage" });
     this.root.createDiv({ cls: "scenery-dim" });
+    this.root.classList.toggle("is-paused", this.paused);
     document.body.prepend(this.root);
     document.body.classList.add("scenery-active");
   }
@@ -69,6 +61,7 @@ export class Renderer {
     const layer = this.current;
     if (layer?.video) this.configureVideo(layer.video);
     if (layer?.effect) layer.effect.fps = s.fps;
+    layer?.scene?.applySettings();
   }
 
   private configureVideo(video: HTMLVideoElement) {
@@ -80,8 +73,12 @@ export class Renderer {
 
   show(item: WallpaperItem | null) {
     if (!this.stage) return;
-    const key = item ? `${item.type}|${item.source}` : "";
-    if (key === this.currentKey) return;
+    const key = !item ? "" : item.type === "scene" ? `scene|${item.id}` : `${item.type}|${item.source}`;
+    if (key === this.currentKey) {
+      // Same scene, edited: patch it in place instead of cross-fading.
+      if (item?.type === "scene") this.current?.scene?.sync(item.scene ?? []);
+      return;
+    }
     this.currentKey = key;
     const token = ++this.token;
     const previous = this.current;
@@ -112,6 +109,14 @@ export class Renderer {
       }
     };
     this.current = layer;
+
+    if (item.type === "scene") {
+      layer.scene = new SceneRuntime(this.app, el, this.getSettings);
+      layer.scene.setPaused(this.paused);
+      layer.scene.sync(item.scene ?? []);
+      void layer.scene.ready().then(reveal);
+      return;
+    }
 
     if (item.type === "effect") {
       layer.effect = new EffectPlayer(el, item.source);
@@ -148,6 +153,7 @@ export class Renderer {
 
   private dispose(layer: Layer) {
     layer.effect?.destroy();
+    layer.scene?.destroy();
     if (layer.video) {
       layer.video.pause();
       layer.video.removeAttribute("src");
@@ -159,8 +165,10 @@ export class Renderer {
   setPaused(paused: boolean) {
     if (paused === this.paused) return;
     this.paused = paused;
+    this.root?.classList.toggle("is-paused", paused);
     const layer = this.current;
     if (!layer) return;
+    layer.scene?.setPaused(paused);
     if (paused) {
       layer.video?.pause();
       layer.effect?.stop();
@@ -172,6 +180,7 @@ export class Renderer {
 
   themeChanged() {
     this.current?.effect?.refreshPalette();
+    this.current?.scene?.themeChanged();
   }
 
   /** x and y are pointer positions in the 0..1 range. */

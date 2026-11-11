@@ -106,3 +106,151 @@ body.scenery-active .workspace-tab-header.is-active::after {
 .scenery-item .setting-item-description {
   word-break: break-all;
 }
+
+/* ---------- Scenes (layered wallpapers) ---------- */
+
+.scenery-scene {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+}
+
+.scenery-sl,
+.scenery-sl-parallax,
+.scenery-sl-motion {
+  position: absolute;
+  inset: 0;
+}
+
+.scenery-sl-parallax {
+  transform: translate3d(
+    calc(var(--scenery-px, 0px) * var(--scenery-depth, 0)),
+    calc(var(--scenery-py, 0px) * var(--scenery-depth, 0)),
+    0
+  );
+}
+
+.scenery-sl .scenery-media.is-broken {
+  visibility: hidden;
+}
+
+.scenery-sl-motion {
+  animation: 20s ease-in-out infinite alternate both;
+}
+
+.scenery-root.is-paused .scenery-sl-motion {
+  animation-play-state: paused;
+}
+
+.scenery-sl-motion[data-motion="sway-x"] {
+  animation-name: scenery-sway-x;
+}
+.scenery-sl-motion[data-motion="sway-y"] {
+  animation-name: scenery-sway-y;
+}
+.scenery-sl-motion[data-motion="zoom"] {
+  animation-name: scenery-zoom;
+}
+.scenery-sl-motion[data-motion="pulse"] {
+  animation-name: scenery-pulse;
+}
+.scenery-sl-motion[data-motion="drift"] {
+  animation-name: scenery-drift;
+  animation-direction: normal;
+}
+.scenery-sl-motion[data-motion="rotate"] {
+  animation-name: scenery-rotate;
+  animation-direction: normal;
+  animation-timing-function: linear;
+}
+
+@keyframes scenery-sway-x {
+  from { transform: translateX(calc(var(--scenery-amt) * -15%)); }
+  to { transform: translateX(calc(var(--scenery-amt) * 15%)); }
+}
+@keyframes scenery-sway-y {
+  from { transform: translateY(calc(var(--scenery-amt) * -15%)); }
+  to { transform: translateY(calc(var(--scenery-amt) * 15%)); }
+}
+@keyframes scenery-zoom {
+  from { transform: scale(1); }
+  to { transform: scale(calc(1 + var(--scenery-amt) * 0.6)); }
+}
+@keyframes scenery-pulse {
+  from { opacity: 1; }
+  to { opacity: calc(1 - var(--scenery-amt)); }
+}
+@keyframes scenery-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes scenery-drift {
+  0%, 100% { transform: translate(calc(var(--scenery-amt) * -10%), 0); }
+  25% { transform: translate(0, calc(var(--scenery-amt) * -8%)); }
+  50% { transform: translate(calc(var(--scenery-amt) * 10%), 0); }
+  75% { transform: translate(0, calc(var(--scenery-amt) * 8%)); }
+}
+
+/* Editor: temporarily lift the readability dimming to judge the scene itself. */
+body.scenery-preview .scenery-dim {
+  opacity: 0;
+}
+
+/* ---------- Scene editor ---------- */
+
+.scenery-editor {
+  padding: var(--size-4-3);
+}
+
+.scenery-editor .setting-item {
+  padding: var(--size-4-2) 0;
+}
+
+.scenery-editor-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin: var(--size-4-2) 0;
+}
+
+.scenery-layer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-2-2) var(--size-4-1);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.scenery-layer-row:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.scenery-layer-row.is-selected {
+  background-color: var(--background-modifier-active-hover);
+}
+
+.scenery-layer-row.is-hidden .scenery-layer-name {
+  opacity: 0.45;
+}
+
+.scenery-layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenery-layer-kind {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.scenery-layer-props {
+  margin: var(--size-4-2) 0 var(--size-4-4);
+  padding-left: var(--size-4-2);
+  border-left: 2px solid var(--interactive-accent);
+}
+
+.scenery-layer-props input[type="text"] {
+  width: 100%;
+}

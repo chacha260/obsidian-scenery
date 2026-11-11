@@ -1,8 +1,9 @@
-import { FuzzySuggestModal, Plugin, TFile } from "obsidian";
+import { FuzzySuggestModal, Plugin, TFile, debounce } from "obsidian";
+import { EDITOR_VIEW, SceneEditorView } from "./editor";
 import { t } from "./i18n";
 import { Renderer } from "./renderer";
 import { ScenerySettingTab } from "./settings";
-import { DEFAULT_SETTINGS, detectType, ScenerySettings, WallpaperItem } from "./types";
+import { DEFAULT_SETTINGS, detectType, newLayer, ScenerySettings, uid, WallpaperItem } from "./types";
 
 class WallpaperPicker extends FuzzySuggestModal<WallpaperItem> {
   constructor(private plugin: SceneryPlugin) {
@@ -25,11 +26,25 @@ export default class SceneryPlugin extends Plugin {
   private renderer!: Renderer;
   private userPaused = false;
   private slideshowTimer: number | null = null;
+  /** Scene currently open in the editor panel. */
+  editingId: string | null = null;
+  private saveSoon = debounce(() => void this.saveSettings(), 500, true);
 
   async onload() {
     await this.loadSettings();
     this.renderer = new Renderer(this.app, () => this.settings);
     this.addSettingTab(new ScenerySettingTab(this.app, this));
+    this.registerView(EDITOR_VIEW, (leaf) => new SceneEditorView(leaf, this));
+    this.addCommand({ id: "new-scene", name: t("cmd.newScene"), callback: () => void this.createScene() });
+    this.addCommand({
+      id: "edit-scene",
+      name: t("cmd.editScene"),
+      callback: () => {
+        const active = this.activeItem;
+        const scene = active?.type === "scene" ? active : this.settings.items.find((i) => i.type === "scene");
+        void (scene ? this.openEditor(scene.id) : this.createScene());
+      },
+    });
 
     this.addRibbonIcon("image", t("cmd.pick"), () => new WallpaperPicker(this).open());
     this.addCommand({ id: "toggle", name: t("cmd.toggle"), callback: () => this.toggle() });
@@ -79,7 +94,11 @@ export default class SceneryPlugin extends Plugin {
   async loadSettings() {
     const data = (await this.loadData()) as Partial<ScenerySettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
-    this.settings.items = (data?.items ?? DEFAULT_SETTINGS.items).map((i) => ({ ...i }));
+    this.settings.items = (data?.items ?? DEFAULT_SETTINGS.items).map((i) => ({
+      ...i,
+      // Fill in fields that older versions did not save.
+      ...(i.scene ? { scene: i.scene.map((l) => ({ ...newLayer(l.kind, l.name), ...l })) } : {}),
+    }));
   }
 
   async saveSettings() {
@@ -101,6 +120,45 @@ export default class SceneryPlugin extends Plugin {
       this.renderer.unmount();
     }
     this.restartSlideshow();
+  }
+
+  /** Called by the editor after it mutated a scene in place. */
+  sceneChanged() {
+    if (this.settings.enabled) this.renderer.show(this.activeItem);
+    this.saveSoon();
+  }
+
+  async createScene() {
+    const count = this.settings.items.filter((i) => i.type === "scene").length;
+    const item: WallpaperItem = {
+      id: uid(),
+      name: `${t("type.scene")} ${count + 1}`,
+      type: "scene",
+      source: "",
+      scene: [
+        newLayer("color", t("kind.color")),
+        newLayer("effect", "Aurora", { source: "aurora", opacity: 70 }),
+        newLayer("effect", "Fireflies", { source: "fireflies", themeColor: false, depth: 100 }),
+      ],
+    };
+    this.settings.items.push(item);
+    await this.openEditor(item.id);
+  }
+
+  /** Show the scene as the wallpaper and open the editor panel on it. */
+  async openEditor(id: string) {
+    this.editingId = id;
+    await this.setActive(id);
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(EDITOR_VIEW)[0];
+    if (!leaf) {
+      const fresh = workspace.getRightLeaf(false);
+      if (!fresh) return;
+      leaf = fresh;
+      await leaf.setViewState({ type: EDITOR_VIEW, active: true });
+    }
+    void workspace.revealLeaf(leaf);
+    if (leaf.view instanceof SceneEditorView) leaf.view.render();
   }
 
   applyStyle() {
@@ -156,13 +214,13 @@ export default class SceneryPlugin extends Plugin {
     const ids: string[] = [];
     for (const source of sources) {
       const kind = type ?? detectType(source);
-      if (!kind) continue;
+      if (!kind || kind === "scene") continue;
       const existing = this.settings.items.find((i) => i.source === source && i.type === kind);
       if (existing) {
         ids.push(existing.id);
         continue;
       }
-      const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const id = uid();
       const fallback = decodeURIComponent(source.split(/[?#]/)[0].split(/[\\/]/).filter(Boolean).pop() ?? source);
       this.settings.items.push({ id, name: name || fallback, type: kind, source });
       ids.push(id);
