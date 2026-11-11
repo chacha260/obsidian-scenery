@@ -1,0 +1,108 @@
+/* ---------- Wallpaper layers ---------- */
+
+.scenery-root {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--background-primary);
+}
+
+.scenery-stage,
+.scenery-dim {
+  position: absolute;
+  inset: 0;
+}
+
+.scenery-dim {
+  background-color: var(--background-primary);
+  opacity: var(--scenery-dim, 0.55);
+}
+
+.scenery-layer {
+  position: absolute;
+  inset: calc(-1 * var(--scenery-bleed, 0px));
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  filter: blur(var(--scenery-blur, 0px)) brightness(var(--scenery-brightness, 1))
+    saturate(var(--scenery-saturation, 1));
+  transform: translate3d(var(--scenery-px, 0px), var(--scenery-py, 0px), 0);
+}
+
+.scenery-layer.is-visible {
+  opacity: 1;
+}
+
+.scenery-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: var(--scenery-fit, cover);
+}
+
+/* ---------- Let the wallpaper show through the workspace ---------- */
+
+body.scenery-active {
+  background-color: transparent !important;
+}
+
+body.scenery-active .app-container,
+body.scenery-active .horizontal-main-container,
+body.scenery-active .workspace,
+body.scenery-active .workspace-split,
+body.scenery-active .workspace-tabs,
+body.scenery-active .workspace-tab-container,
+body.scenery-active .workspace-tab-header-container,
+body.scenery-active .workspace-leaf,
+body.scenery-active .workspace-leaf-content,
+body.scenery-active .view-header,
+body.scenery-active .view-content,
+body.scenery-active .nav-header,
+body.scenery-active .nav-files-container,
+body.scenery-active .workspace-sidedock-vault-profile,
+body.scenery-active .markdown-source-view,
+body.scenery-active .markdown-reading-view,
+body.scenery-active .cm-editor,
+body.scenery-active .cm-scroller,
+body.scenery-active .cm-gutters,
+body.scenery-active .sidebar-toggle-button,
+body.scenery-active .titlebar,
+body.scenery-active .titlebar-inner,
+body.scenery-active .status-bar {
+  background-color: transparent !important;
+}
+
+body.scenery-active .workspace-ribbon.mod-left::before {
+  background-color: transparent !important;
+}
+
+/* Sidebars and ribbon get their own adjustable tint. */
+body.scenery-active .workspace-ribbon,
+body.scenery-active .workspace-split.mod-left-split,
+body.scenery-active .workspace-split.mod-right-split {
+  background-color: color-mix(in srgb, var(--background-secondary) var(--scenery-panel, 25%), transparent) !important;
+}
+
+/* Active tab: keep it distinguishable without an opaque slab. */
+body.scenery-active .workspace-tab-header.is-active,
+body.scenery-active .mod-root .workspace-tab-header.is-active {
+  background-color: color-mix(in srgb, var(--background-primary) 45%, transparent) !important;
+  box-shadow: none;
+}
+
+body.scenery-active .workspace-tab-header.is-active::before,
+body.scenery-active .workspace-tab-header.is-active::after {
+  display: none;
+}
+
+/* ---------- Settings ---------- */
+
+.scenery-item.is-active .setting-item-name {
+  color: var(--text-accent);
+}
+
+.scenery-item .setting-item-description {
+  word-break: break-all;
+}

@@ -1,0 +1,17 @@
+{
+  "name": "obsidian-scenery",
+  "version": "0.1.0",
+  "description": "Wallpaper Engine-like animated wallpapers for Obsidian",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "latest",
+    "typescript": "^5.4.0"
+  }
+}
