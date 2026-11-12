@@ -265,3 +265,28 @@ body.scenery-preview .scenery-dim {
 .scenery-layer-props input[type="text"] {
   width: 100%;
 }
+
+/* The "add wallpaper" row holds more buttons than fit on one line. */
+.scenery-add.setting-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--size-4-2);
+}
+
+.scenery-add .setting-item-info {
+  margin-right: 0;
+}
+
+.scenery-add .setting-item-control {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.scenery-wide-input {
+  width: 100%;
+}
+
+/* Long file paths and URLs must not widen the settings pane. */
+.scenery-item .setting-item-info {
+  min-width: 0;
+}

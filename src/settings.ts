@@ -20,7 +20,7 @@ class UrlModal extends Modal {
     this.setTitle(t("modal.url.title"));
     new Setting(this.contentEl).setName(t("modal.url.source")).addText((text) => {
       text.setPlaceholder("https://… / C:\\wallpapers\\a.mp4").onChange((v) => (this.source = v.trim()));
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("scenery-wide-input");
     });
     new Setting(this.contentEl).setName(t("modal.url.name")).addText((text) => text.onChange((v) => (this.name = v.trim())));
     new Setting(this.contentEl).setName(t("modal.url.type")).addDropdown((d) =>
@@ -253,9 +253,10 @@ export class ScenerySettingTab extends PluginSettingTab {
       row.settingEl.toggleClass("is-active", active);
     }
 
-    new Setting(containerEl)
-      .setName(t("set.add"))
-      .setDesc(t("set.add.desc"))
+    const addRow = new Setting(containerEl).setName(t("set.add")).setDesc(t("set.add.desc"));
+    // Many buttons: stack them under the label and let them wrap instead of overflowing.
+    addRow.settingEl.addClass("scenery-add");
+    addRow
       .addButton((b) =>
         b.setButtonText(t("set.add.file")).onClick(() => {
           new FilePicker(this.app, null, (file) => void this.addAndShow([file.path])).open();
