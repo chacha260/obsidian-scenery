@@ -76,6 +76,26 @@ A folder containing a Wallpaper Engine **web** wallpaper (`project.json`) can be
 - Scene, video and application wallpapers are not supported.
 - This was built from the documented API and has not been tested against Workshop items. Use it with wallpapers you have the right to use.
 
+## Scenery Studio: make wallpapers in the browser
+
+`studio/` holds a small web app for making wallpapers with more room than a sidebar gives you. It draws with the plugin's own rendering code, so what you see is what Obsidian shows.
+
+- **Scene mode**: a large preview with a mock-up of Obsidian on top, so you can judge readability. Drop images and videos onto the page, drag a layer on the preview to move it, scroll to resize it, and edit everything else in the side panel.
+- **Package mode**: edit `index.html` and `scenery.json` next to the running page. The settings your package declares appear as controls, and you can switch theme, accent colour and pause to see how the page responds.
+- **Save to folder** (Chrome, Edge and other Chromium browsers): choose your vault's `Scenery` folder once and the Studio writes the wallpaper there. After you add that folder in Obsidian with **Vault folder**, saving a package again reloads the wallpaper in Obsidian. A scene is copied in when you add it, so add it again to pick up later changes.
+- **Download .zip** works in every browser. Unpack it into your vault.
+- **Open folder** loads a scene or package back in, including scenes exported from Obsidian.
+
+Run it locally:
+
+```bash
+npm run studio:dev
+```
+
+Then open http://localhost:4173. `npm run studio` builds a static copy into `studio/dist/` that can be hosted anywhere; the **Studio** workflow publishes it with GitHub Pages.
+
+Everything stays in your browser: the Studio uploads nothing. Limits: in the Studio's preview a package cannot load its own extra files (images, scripts) by relative path, and package layers inside a scene can be kept but not created or configured.
+
 ## Privacy and security
 
 - Scenery makes no network requests and collects nothing.
@@ -115,7 +135,7 @@ npm run dev
 npm test
 ```
 
-`npm test` builds the plugin against a small stand-in for the Obsidian API (`test/harness/stub.js`) and exercises it in headless Chromium. It checks the plugin's own logic; it does not replace trying a change in Obsidian. The first time, install the browser with `npx playwright install chromium`.
+`npm test` also checks the Studio. It builds the plugin against a small stand-in for the Obsidian API (`test/harness/stub.js`) and exercises it in headless Chromium. It checks the plugin's own logic; it does not replace trying a change in Obsidian. The first time, install the browser with `npx playwright install chromium`.
 
 `npm run lint` runs `eslint-plugin-obsidianmd`, the rule set the Obsidian community directory applies to submissions.
 

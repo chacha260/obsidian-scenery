@@ -147,6 +147,31 @@ const en = {
   "set.rename": "Rename",
   "set.popouts": "Show in pop-out windows",
   "set.popouts.desc": "Also show the wallpaper in windows opened with “Move to new window”.",
+  "studio.scene": "Scene",
+  "studio.package": "Package",
+  "studio.open": "Open folder…",
+  "studio.saveFolder": "Save to folder…",
+  "studio.save": "Save",
+  "studio.zip": "Download .zip",
+  "studio.dark": "Dark theme",
+  "studio.accent": "Accent",
+  "studio.mock": "Show Obsidian mock-up",
+  "studio.parallax": "Parallax preview",
+  "studio.pause": "Pause",
+  "studio.dropHint": "Drop images or videos here, or use “Add layer”.",
+  "studio.dragHint": "Drag on the preview to move the selected layer. Scroll to resize it.",
+  "studio.saved": "Saved to “{path}”",
+  "studio.saveHint": "Choose your vault's Scenery folder. In Obsidian, add the saved folder with “Vault folder”.",
+  "studio.noFolderApi": "This browser cannot save to a folder. Use “Download .zip” instead.",
+  "studio.badJson": "scenery.json is not valid JSON:",
+  "studio.manifest": "scenery.json",
+  "studio.html": "index.html",
+  "studio.controls": "Settings preview",
+  "studio.note": "Simulate an open note",
+  "studio.urlLayer": "File name in the project, or a URL",
+  "studio.opened": "Opened “{name}”",
+  "studio.notScenery": "That folder has no scenery.json.",
+  "studio.unsaved": "There are unsaved changes.",
 };
 
 type Key = keyof typeof en;
@@ -300,10 +325,40 @@ const ja: Record<Key, string> = {
   "set.rename": "名前を変更",
   "set.popouts": "ポップアウトウィンドウにも表示",
   "set.popouts.desc": "「新しいウィンドウに移動」で開いたウィンドウにも壁紙を表示します。",
+  "studio.scene": "シーン",
+  "studio.package": "パッケージ",
+  "studio.open": "フォルダを開く…",
+  "studio.saveFolder": "フォルダに保存…",
+  "studio.save": "保存",
+  "studio.zip": ".zip をダウンロード",
+  "studio.dark": "ダークテーマ",
+  "studio.accent": "アクセント",
+  "studio.mock": "Obsidian の見た目を重ねる",
+  "studio.parallax": "視差プレビュー",
+  "studio.pause": "一時停止",
+  "studio.dropHint": "画像や動画をここにドロップするか、「レイヤーを追加」を使ってください。",
+  "studio.dragHint": "プレビュー上をドラッグすると選択中のレイヤーが動きます。スクロールで拡大縮小。",
+  "studio.saved": "「{path}」に保存しました",
+  "studio.saveHint": "Vault の Scenery フォルダを選んでください。Obsidian では、保存したフォルダを「Vault のフォルダ」から追加します。",
+  "studio.noFolderApi": "このブラウザはフォルダへの保存に対応していません。「.zip をダウンロード」を使ってください。",
+  "studio.badJson": "scenery.json が正しい JSON ではありません:",
+  "studio.manifest": "scenery.json",
+  "studio.html": "index.html",
+  "studio.controls": "設定項目のプレビュー",
+  "studio.note": "開いているノートを再現する",
+  "studio.urlLayer": "プロジェクト内のファイル名、または URL",
+  "studio.opened": "「{name}」を開きました",
+  "studio.notScenery": "そのフォルダに scenery.json がありません。",
+  "studio.unsaved": "保存していない変更があります。",
 };
 
 const lang = window.localStorage.getItem("language") ?? "en";
-const dict: Record<Key, string> = lang.startsWith("ja") ? ja : en;
+let dict: Record<Key, string> = lang.startsWith("ja") ? ja : en;
+
+/** Obsidian's own language setting is read above; the Studio web app picks from the browser instead. */
+export function setLanguage(language: string) {
+  dict = language.startsWith("ja") ? ja : en;
+}
 
 export function t(key: Key, vars?: Record<string, string | number>): string {
   let s = dict[key] ?? en[key];

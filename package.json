@@ -7,8 +7,10 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "lint": "eslint .",
-    "test": "node test/run.mjs",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "test": "node test/run.mjs && node test/studio.mjs",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "studio": "node studio/build.mjs",
+    "studio:dev": "node studio/build.mjs --serve"
   },
   "license": "MIT",
   "devDependencies": {
