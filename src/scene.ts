@@ -1,5 +1,6 @@
 import type { App } from "obsidian";
 import { EffectPlayer } from "./effects";
+import { makeState, PackageFrame, readTheme, resolveValues } from "./package";
 import { resolveSource } from "./source";
 import type { SceneLayer, ScenerySettings } from "./types";
 
@@ -11,6 +12,9 @@ interface Handle {
   media: HTMLElement;
   video?: HTMLVideoElement;
   effect?: EffectPlayer;
+  pkg?: PackageFrame;
+  /** Last property values sent to the package, to avoid re-sending on unrelated edits. */
+  sent?: string;
   loaded: Promise<void>;
 }
 
@@ -21,6 +25,7 @@ export class SceneRuntime {
   private handles = new Map<string, Handle>();
   private root: HTMLElement;
   private paused = false;
+  private pointer = { x: 0.5, y: 0.5 };
 
   constructor(private app: App, parent: HTMLElement, private getSettings: () => ScenerySettings) {
     this.root = parent.createDiv({ cls: "scenery-scene" });
@@ -80,6 +85,17 @@ export class SceneRuntime {
       handle.effect = new EffectPlayer(motion, layer.source, { transparent: true });
       handle.media = handle.effect.canvas;
       if (!this.paused) handle.effect.start();
+    } else if (layer.kind === "package" && layer.source) {
+      const pkg = new PackageFrame(this.app, motion, layer.source, (manifest) =>
+        makeState(manifest, layer.values, { paused: this.paused, pointer: this.pointer, note: null, fps: this.getSettings().fps })
+      );
+      handle.pkg = pkg;
+      handle.media = pkg.frame;
+      handle.sent = JSON.stringify(layer.values ?? {});
+      handle.loaded = pkg.loaded.catch((e) => {
+        console.error("Scenery: could not load package layer", layer.source, e);
+        pkg.frame.classList.add("is-broken");
+      });
     } else if (!layer.source) {
       handle.media = motion.createDiv({ cls: "scenery-media" });
     } else if (layer.kind === "image") {
@@ -116,6 +132,11 @@ export class SceneRuntime {
       h.media.style.background = l.gradient ? `linear-gradient(${l.angle}deg, ${l.color}, ${l.color2})` : l.color;
     }
     h.effect?.setTint(l.themeColor ? null : l.color);
+    const values = JSON.stringify(l.values ?? {});
+    if (h.pkg?.manifest && values !== h.sent) {
+      h.sent = values;
+      h.pkg.post("props", resolveValues(h.pkg.manifest, l.values));
+    }
   }
 
   /** Volume, speed and frame rate come from the plugin settings, not from the scene. */
@@ -137,7 +158,9 @@ export class SceneRuntime {
       if (paused) {
         h.video?.pause();
         h.effect?.stop();
+        h.pkg?.post("paused", true);
       } else {
+        h.pkg?.post("paused", false);
         void h.video?.play().catch(() => undefined);
         h.effect?.start();
       }
@@ -145,7 +168,16 @@ export class SceneRuntime {
   }
 
   themeChanged() {
-    for (const h of this.handles.values()) h.effect?.refreshPalette();
+    const theme = readTheme();
+    for (const h of this.handles.values()) {
+      h.effect?.refreshPalette();
+      h.pkg?.post("theme", theme);
+    }
+  }
+
+  setPointer(pointer: { x: number; y: number }) {
+    this.pointer = pointer;
+    for (const h of this.handles.values()) h.pkg?.post("pointer", pointer);
   }
 
   private dispose(h: Handle) {

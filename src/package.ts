@@ -1,6 +1,9 @@
 import { App, normalizePath } from "obsidian";
+import type { SceneLayer } from "./types";
 
 export const MANIFEST_FILE = "scenery.json";
+/** Manifest of a Wallpaper Engine web wallpaper, read as a fallback. */
+export const WE_MANIFEST_FILE = "project.json";
 
 export interface PackageProperty {
   type: "slider" | "color" | "toggle" | "select" | "text";
@@ -24,6 +27,11 @@ export interface PackageManifest {
   properties?: Record<string, PackageProperty>;
   /** "note": the wallpaper asks to be told which note is open. */
   permissions?: string[];
+  /** "scene": the folder holds an exported scene (layers) instead of a page. */
+  type?: string;
+  layers?: SceneLayer[];
+  /** Set when converted from a Wallpaper Engine project.json. Lists the colour property keys. */
+  compat?: { colors: string[] };
 }
 
 export interface NoteInfo {
@@ -37,13 +45,98 @@ export interface PackageState {
   note: NoteInfo | null;
   paused: boolean;
   pointer: { x: number; y: number };
+  /** Present for Wallpaper Engine pages: drives the compatibility bridge in the shim. */
+  we?: { colors: string[]; fps: number };
+}
+
+export function makeState(
+  manifest: PackageManifest,
+  values: Record<string, unknown> | undefined,
+  env: { paused: boolean; pointer: { x: number; y: number }; note: NoteInfo | null; fps: number }
+): PackageState {
+  return {
+    props: resolveValues(manifest, values),
+    theme: readTheme(),
+    note: env.note,
+    paused: env.paused,
+    pointer: env.pointer,
+    ...(manifest.compat ? { we: { colors: manifest.compat.colors, fps: env.fps } } : {}),
+  };
+}
+
+export async function hasManifest(app: App, folder: string): Promise<boolean> {
+  const { adapter } = app.vault;
+  return (
+    (await adapter.exists(normalizePath(`${folder}/${MANIFEST_FILE}`))) ||
+    (await adapter.exists(normalizePath(`${folder}/${WE_MANIFEST_FILE}`)))
+  );
+}
+
+interface WeProperty {
+  type?: string;
+  text?: string;
+  value?: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  fraction?: boolean;
+  order?: number;
+  options?: { label?: string; value?: unknown }[];
+}
+
+const stripTags = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
+/** Wallpaper Engine colours are "r g b" with 0..1 components. */
+function weColorToHex(value: unknown): string {
+  const parts = String(value ?? "1 1 1").trim().split(/\s+/).map(Number);
+  if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return "#ffffff";
+  return "#" + parts.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+/** Map a Wallpaper Engine web wallpaper's project.json onto our manifest. */
+function fromWallpaperEngine(project: Record<string, unknown>): PackageManifest {
+  const general = (project.general ?? {}) as { properties?: Record<string, WeProperty> };
+  const properties: Record<string, PackageProperty> = {};
+  const colors: string[] = [];
+  const entries = Object.entries(general.properties ?? {}).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0));
+  for (const [key, p] of entries) {
+    const text = stripTags(String(p.text ?? key));
+    const label = text === "ui_browse_properties_scheme_color" ? "Scheme color" : text || key;
+    if (p.type === "slider") {
+      const min = p.min ?? 0;
+      const max = p.max ?? 100;
+      properties[key] = { type: "slider", label, min, max, step: p.step ?? (p.fraction ? (max - min) / 100 : 1), default: p.value };
+    } else if (p.type === "color") {
+      colors.push(key);
+      properties[key] = { type: "color", label, default: weColorToHex(p.value) };
+    } else if (p.type === "bool") {
+      properties[key] = { type: "toggle", label, default: p.value };
+    } else if (p.type === "combo") {
+      const options = Object.fromEntries((p.options ?? []).map((o) => [String(o.value), stripTags(String(o.label ?? o.value))]));
+      properties[key] = { type: "select", label, options, default: String(p.value) };
+    } else if (p.type === "textinput") {
+      properties[key] = { type: "text", label, default: p.value };
+    }
+    // Other types (plain labels, file and directory pickers) have no equivalent here.
+  }
+  return {
+    name: typeof project.title === "string" ? project.title : undefined,
+    description: "Wallpaper Engine",
+    entry: typeof project.file === "string" ? project.file : "index.html",
+    properties,
+    compat: { colors },
+  };
 }
 
 export async function loadManifest(app: App, folder: string): Promise<PackageManifest> {
-  const raw = await app.vault.adapter.read(normalizePath(`${folder}/${MANIFEST_FILE}`));
-  const manifest = JSON.parse(raw) as PackageManifest;
-  if (typeof manifest !== "object" || manifest === null) throw new Error(`${MANIFEST_FILE} must be an object`);
-  return manifest;
+  const { adapter } = app.vault;
+  const own = normalizePath(`${folder}/${MANIFEST_FILE}`);
+  const foreign = normalizePath(`${folder}/${WE_MANIFEST_FILE}`);
+  const useOwn = await adapter.exists(own);
+  if (!useOwn && !(await adapter.exists(foreign))) throw new Error(`${MANIFEST_FILE} not found in "${folder}"`);
+  const data: unknown = JSON.parse(await adapter.read(useOwn ? own : foreign));
+  if (typeof data !== "object" || data === null) throw new Error("the manifest must be a JSON object");
+  return useOwn ? (data as PackageManifest) : fromWallpaperEngine(data as Record<string, unknown>);
 }
 
 export async function loadPackage(app: App, folder: string) {
@@ -141,6 +234,57 @@ const SHIM = `(function () {
     }
     emit(m.key);
   });
+  // Sandboxed pages may not touch real storage; give them a throwaway one instead of an exception.
+  ["localStorage", "sessionStorage"].forEach(function (name) {
+    try { void window[name]; return; } catch (e) {}
+    var data = {};
+    Object.defineProperty(window, name, { configurable: true, value: {
+      getItem: function (k) { return k in data ? data[k] : null; },
+      setItem: function (k, v) { data[k] = String(v); },
+      removeItem: function (k) { delete data[k]; },
+      clear: function () { data = {}; },
+      key: function (i) { return Object.keys(data)[i] || null; },
+      get length() { return Object.keys(data).length; },
+    } });
+  });
+
+  // ---- Wallpaper Engine web wallpaper bridge ----
+  if (state.we) {
+    var listener = function () { return window.wallpaperPropertyListener || {}; };
+    var call = function (name, arg) {
+      var fn = listener()[name];
+      if (typeof fn === "function") { try { fn(arg); } catch (e) { console.error(e); } }
+    };
+    var weColor = function (hex) {
+      var n = parseInt(String(hex).slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(function (v) { return +(v / 255).toFixed(4); }).join(" ");
+    };
+    var weProps = function () {
+      var out = {};
+      Object.keys(state.props).forEach(function (k) {
+        out[k] = { value: state.we.colors.indexOf(k) >= 0 ? weColor(state.props[k]) : state.props[k] };
+      });
+      return out;
+    };
+    // No audio capture here: listeners get silence so visualisers idle instead of breaking.
+    var audioListeners = [];
+    var silence = new Array(128).fill(0);
+    window.wallpaperRegisterAudioListener = function (fn) { if (typeof fn === "function") audioListeners.push(fn); };
+    setInterval(function () {
+      if (!state.paused) audioListeners.forEach(function (fn) { try { fn(silence); } catch (e) {} });
+    }, 33);
+    ["wallpaperRegisterMediaStatusListener", "wallpaperRegisterMediaPropertiesListener", "wallpaperRegisterMediaThumbnailListener",
+      "wallpaperRegisterMediaPlaybackListener", "wallpaperRegisterMediaTimelineListener", "wallpaperRequestRandomFileForProperty"
+    ].forEach(function (name) { window[name] = function () {}; });
+    window.addEventListener("load", function () {
+      call("applyGeneralProperties", { fps: state.we.fps });
+      call("applyUserProperties", weProps());
+      call("setPaused", state.paused);
+    });
+    (handlers.props = handlers.props || []).push(function () { call("applyUserProperties", weProps()); });
+    (handlers.paused = handlers.paused || []).push(function (p) { call("setPaused", p); });
+  }
+
   window.scenery = {
     get props() { return state.props; },
     get theme() { return state.theme; },
@@ -167,4 +311,31 @@ export function buildDocument(html: string, baseUrl: string, state: PackageState
     if (m) return html.slice(0, m.index + m[0].length) + inject + html.slice(m.index + m[0].length);
   }
   return inject + html;
+}
+
+/** A sandboxed frame running one package, plus the channel to talk to it. */
+export class PackageFrame {
+  readonly frame: HTMLIFrameElement;
+  manifest: PackageManifest | null = null;
+  /** Settles when the page has loaded; rejects if the package cannot be read. */
+  readonly loaded: Promise<void>;
+
+  constructor(app: App, parent: HTMLElement, folder: string, state: (manifest: PackageManifest) => PackageState) {
+    const frame = (this.frame = parent.createEl("iframe", { cls: "scenery-media" }));
+    // Scripts may run, but the page gets an opaque origin: no access to the vault or the app.
+    frame.setAttribute("sandbox", "allow-scripts");
+    this.loaded = (async () => {
+      const { manifest, html, baseUrl } = await loadPackage(app, folder);
+      if (manifest.type === "scene") throw new Error("this folder is an exported scene; add it from the library instead");
+      this.manifest = manifest;
+      const done = new Promise<void>((resolve) => frame.addEventListener("load", () => resolve(), { once: true }));
+      frame.srcdoc = buildDocument(html, baseUrl, state(manifest));
+      await done;
+    })();
+  }
+
+  post(key: keyof PackageState, value: unknown) {
+    // The frame is sandboxed with an opaque origin, so "*" is the only target that reaches it.
+    this.frame.contentWindow?.postMessage({ scenery: 1, key, value }, "*");
+  }
 }

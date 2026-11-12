@@ -1,9 +1,11 @@
 import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
-import { loadManifest, MANIFEST_FILE, PackageManifest, resolveValues, selectOptions } from "./package";
+import { hasManifest, loadManifest, PackageManifest } from "./package";
+import { renderProperties } from "./propsui";
+import { importScene } from "./sceneio";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
 import { FilePicker, FolderPicker } from "./pickers";
-import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, WallpaperItem, WallpaperType } from "./types";
+import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
 
 class UrlModal extends Modal {
   private source = "";
@@ -119,7 +121,6 @@ export class ScenerySettingTab extends PluginSettingTab {
       void this.renderPackage(el, item);
     };
     const changed = () => plugin.packageChanged(item, manifest);
-    const values = resolveValues(manifest, item.values);
     const set = (key: string, value: unknown) => {
       (item.values ??= {})[key] = value;
       changed();
@@ -156,30 +157,12 @@ export class ScenerySettingTab extends PluginSettingTab {
           .setTooltip(t("pkg.openFolder"))
           .onClick(() => {
             // Not in the public API, hence the guarded call.
-            (this.app as unknown as { showInFolder?: (path: string) => void }).showInFolder?.(`${item.source}/${MANIFEST_FILE}`);
+            (this.app as unknown as { showInFolder?: (path: string) => void }).showInFolder?.(`${item.source}/${manifest.entry || "index.html"}`);
           })
       );
     }
 
-    for (const [key, p] of Object.entries(manifest.properties ?? {})) {
-      const setting = new Setting(el).setName(p.label || key);
-      if (p.description) setting.setDesc(p.description);
-      if (p.type === "slider") {
-        setting.addSlider((sl) => {
-          sl.setLimits(p.min ?? 0, p.max ?? 100, p.step ?? 1).setValue(values[key] as number).setDynamicTooltip();
-          sl.sliderEl.addEventListener("input", () => set(key, Number(sl.sliderEl.value)));
-          sl.onChange((v) => set(key, v));
-        });
-      } else if (p.type === "toggle") {
-        setting.addToggle((tg) => tg.setValue(values[key] as boolean).onChange((v) => set(key, v)));
-      } else if (p.type === "color") {
-        setting.addColorPicker((c) => c.setValue(values[key] as string).onChange((v) => set(key, v)));
-      } else if (p.type === "select") {
-        setting.addDropdown((d) => d.addOptions(selectOptions(p)).setValue(values[key] as string).onChange((v) => set(key, v)));
-      } else {
-        setting.addText((tx) => tx.setValue(values[key] as string).onChange((v) => set(key, v)));
-      }
-    }
+    renderProperties(el, manifest, item.values, set);
 
     if (manifest.permissions?.includes("note")) {
       new Setting(el)
@@ -282,9 +265,18 @@ export class ScenerySettingTab extends PluginSettingTab {
         b.setButtonText(t("set.add.folder")).onClick(() => {
           new FolderPicker(this.app, async (folder) => {
             // A folder holding scenery.json is a wallpaper package, not a pile of media.
-            if (!folder.isRoot() && (await this.app.vault.adapter.exists(`${folder.path}/${MANIFEST_FILE}`))) {
-              const name = await loadManifest(this.app, folder.path).then((m) => m.name, () => undefined);
-              void this.addAndShow([folder.path], "package", name || folder.name);
+            if (!folder.isRoot() && (await hasManifest(this.app, folder.path))) {
+              const manifest = await loadManifest(this.app, folder.path).catch(() => null);
+              if (manifest?.type === "scene") {
+                // An exported scene comes back as an ordinary, editable scene.
+                const item: WallpaperItem = { id: uid(), name: manifest.name || folder.name, type: "scene", source: "", scene: importScene(manifest, folder.path) };
+                s.items.push(item);
+                new Notice(t("notice.added", { n: 1 }));
+                await plugin.setActive(item.id);
+                this.display();
+              } else {
+                void this.addAndShow([folder.path], "package", manifest?.name || folder.name);
+              }
               return;
             }
             const prefix = folder.isRoot() ? "" : folder.path + "/";

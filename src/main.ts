@@ -1,7 +1,8 @@
 import { FuzzySuggestModal, Modal, Notice, Plugin, Setting, TFile, debounce, normalizePath } from "obsidian";
 import { EDITOR_VIEW, SceneEditorView } from "./editor";
 import { t } from "./i18n";
-import { MANIFEST_FILE, NoteInfo, PackageManifest } from "./package";
+import { loadManifest, MANIFEST_FILE, NoteInfo, PackageManifest } from "./package";
+import { ensureFolder, exportScene, safeName } from "./sceneio";
 import { Renderer } from "./renderer";
 import { TEMPLATE_HTML, templateManifest } from "./template";
 import { ScenerySettingTab } from "./settings";
@@ -109,11 +110,26 @@ export default class SceneryPlugin extends Plugin {
       callback: () => new NameModal(this, (name) => void this.createPackage(name)).open(),
     });
     this.addCommand({ id: "reload", name: t("cmd.reload"), callback: () => this.reloadWallpaper() });
+    this.addCommand({
+      id: "export-scene",
+      name: t("cmd.exportScene"),
+      checkCallback: (checking) => {
+        const active = this.activeItem;
+        if (active?.type !== "scene") return false;
+        if (!checking) void this.exportScene(active.id);
+        return true;
+      },
+    });
     // Authoring loop: saving a file of the active package reloads the wallpaper.
     const reloadSoon = debounce(() => this.reloadWallpaper(), 400, true);
     const onFileChange = (file: { path: string }) => {
       const active = this.activeItem;
-      if (this.settings.enabled && active?.type === "package" && file.path.startsWith(`${active.source}/`)) reloadSoon();
+      if (!this.settings.enabled || !active) return;
+      const folders =
+        active.type === "package"
+          ? [active.source]
+          : (active.scene ?? []).filter((l) => l.kind === "package" && l.source).map((l) => l.source);
+      if (folders.some((folder) => file.path.startsWith(`${folder}/`))) reloadSoon();
     };
     this.registerEvent(this.app.vault.on("modify", onFileChange));
     this.registerEvent(this.app.vault.on("create", onFileChange));
@@ -183,23 +199,43 @@ export default class SceneryPlugin extends Plugin {
   /** Create a working example package in the vault and show it. Returns its folder, or null. */
   async createPackage(name: string): Promise<string | null> {
     const { vault } = this.app;
-    const safe = name.replace(/[\\/:*?"<>|#^[\]]/g, "-").trim();
+    const safe = safeName(name);
     if (!safe) return null;
     const folder = normalizePath(`${this.settings.packageFolder || "Scenery"}/${safe}`);
     if (await vault.adapter.exists(folder)) {
       new Notice(t("pkg.exists", { path: folder }));
       return null;
     }
-    // createFolder does not create missing parents.
-    let path = "";
-    for (const part of folder.split("/")) {
-      path = path ? `${path}/${part}` : part;
-      if (!(await vault.adapter.exists(path))) await vault.createFolder(path);
-    }
+    await ensureFolder(this.app, folder);
     await vault.create(`${folder}/${MANIFEST_FILE}`, JSON.stringify(templateManifest(name), null, 2) + "\n");
     await vault.create(`${folder}/index.html`, TEMPLATE_HTML);
     await this.setActive(this.addItems([folder], "package", name)[0]);
     new Notice(t("pkg.created", { path: folder }));
+    return folder;
+  }
+
+  /** Write a scene to a folder in the vault so it can be backed up or shared. */
+  async exportScene(id: string): Promise<string | null> {
+    const item = this.settings.items.find((i) => i.id === id && i.type === "scene");
+    const safe = item && safeName(item.name);
+    if (!item || !safe) return null;
+    const folder = normalizePath(`${this.settings.packageFolder || "Scenery"}/${safe}`);
+    try {
+      // Re-exporting over an earlier export is fine; overwriting anything else is not.
+      if (await this.app.vault.adapter.exists(folder)) {
+        const existing = await loadManifest(this.app, folder).catch(() => null);
+        if (existing?.type !== "scene") {
+          new Notice(t("pkg.exists", { path: folder }));
+          return null;
+        }
+      }
+      await exportScene(this.app, item, folder);
+    } catch (e) {
+      console.error("Scenery: export failed", e);
+      new Notice(`${t("scene.exportFailed")} ${String(e)}`);
+      return null;
+    }
+    new Notice(t("scene.exported", { path: folder }));
     return folder;
   }
 

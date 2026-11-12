@@ -139,6 +139,11 @@ const en = {
   "tpl.shape.ring": "Ring",
   "tpl.trails": "Trails",
   "tpl.message": "Message",
+  "kind.package": "Package",
+  "editor.package.desc": "Vault folder of a wallpaper package. Pages without a background of their own let lower layers show through.",
+  "cmd.exportScene": "Export scene to a folder",
+  "scene.exported": "Scenery: scene exported to “{path}”",
+  "scene.exportFailed": "Scenery: could not export the scene:",
 };
 
 type Key = keyof typeof en;
@@ -284,6 +289,11 @@ const ja: Record<Key, string> = {
   "tpl.shape.ring": "輪",
   "tpl.trails": "残像",
   "tpl.message": "メッセージ",
+  "kind.package": "パッケージ",
+  "editor.package.desc": "壁紙パッケージの Vault フォルダ。背景を持たないページは、下のレイヤーが透けて見えます。",
+  "cmd.exportScene": "シーンをフォルダに書き出す",
+  "scene.exported": "Scenery: シーンを「{path}」に書き出しました",
+  "scene.exportFailed": "Scenery: シーンを書き出せませんでした:",
 };
 
 const lang = window.localStorage.getItem("language") ?? "en";

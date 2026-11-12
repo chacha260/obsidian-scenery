@@ -34,6 +34,11 @@
   opacity: 1;
 }
 
+/* Matching the frame's colour scheme to the page default keeps pages without a background see-through. */
+iframe.scenery-media {
+  color-scheme: light;
+}
+
 .scenery-media {
   display: block;
   width: 100%;
@@ -44,56 +49,62 @@
 
 /* ---------- Let the wallpaper show through the workspace ---------- */
 
-body.scenery-active {
+/*
+ * Obsidian copies body classes to its other windows (settings, pop-outs), which
+ * have no wallpaper layer. Going transparent there would expose the bare window,
+ * so every rule also requires the layer to be present in this document.
+ */
+
+body.scenery-active:has(> .scenery-root) {
   background-color: transparent !important;
 }
 
-body.scenery-active .app-container,
-body.scenery-active .horizontal-main-container,
-body.scenery-active .workspace,
-body.scenery-active .workspace-split,
-body.scenery-active .workspace-tabs,
-body.scenery-active .workspace-tab-container,
-body.scenery-active .workspace-tab-header-container,
-body.scenery-active .workspace-leaf,
-body.scenery-active .workspace-leaf-content,
-body.scenery-active .view-header,
-body.scenery-active .view-content,
-body.scenery-active .nav-header,
-body.scenery-active .nav-files-container,
-body.scenery-active .workspace-sidedock-vault-profile,
-body.scenery-active .markdown-source-view,
-body.scenery-active .markdown-reading-view,
-body.scenery-active .cm-editor,
-body.scenery-active .cm-scroller,
-body.scenery-active .cm-gutters,
-body.scenery-active .sidebar-toggle-button,
-body.scenery-active .titlebar,
-body.scenery-active .titlebar-inner,
-body.scenery-active .status-bar {
+body.scenery-active:has(> .scenery-root) .app-container,
+body.scenery-active:has(> .scenery-root) .horizontal-main-container,
+body.scenery-active:has(> .scenery-root) .workspace,
+body.scenery-active:has(> .scenery-root) .workspace-split,
+body.scenery-active:has(> .scenery-root) .workspace-tabs,
+body.scenery-active:has(> .scenery-root) .workspace-tab-container,
+body.scenery-active:has(> .scenery-root) .workspace-tab-header-container,
+body.scenery-active:has(> .scenery-root) .workspace-leaf,
+body.scenery-active:has(> .scenery-root) .workspace-leaf-content,
+body.scenery-active:has(> .scenery-root) .view-header,
+body.scenery-active:has(> .scenery-root) .view-content,
+body.scenery-active:has(> .scenery-root) .nav-header,
+body.scenery-active:has(> .scenery-root) .nav-files-container,
+body.scenery-active:has(> .scenery-root) .workspace-sidedock-vault-profile,
+body.scenery-active:has(> .scenery-root) .markdown-source-view,
+body.scenery-active:has(> .scenery-root) .markdown-reading-view,
+body.scenery-active:has(> .scenery-root) .cm-editor,
+body.scenery-active:has(> .scenery-root) .cm-scroller,
+body.scenery-active:has(> .scenery-root) .cm-gutters,
+body.scenery-active:has(> .scenery-root) .sidebar-toggle-button,
+body.scenery-active:has(> .scenery-root) .titlebar,
+body.scenery-active:has(> .scenery-root) .titlebar-inner,
+body.scenery-active:has(> .scenery-root) .status-bar {
   background-color: transparent !important;
 }
 
-body.scenery-active .workspace-ribbon.mod-left::before {
+body.scenery-active:has(> .scenery-root) .workspace-ribbon.mod-left::before {
   background-color: transparent !important;
 }
 
 /* Sidebars and ribbon get their own adjustable tint. */
-body.scenery-active .workspace-ribbon,
-body.scenery-active .workspace-split.mod-left-split,
-body.scenery-active .workspace-split.mod-right-split {
+body.scenery-active:has(> .scenery-root) .workspace-ribbon,
+body.scenery-active:has(> .scenery-root) .workspace-split.mod-left-split,
+body.scenery-active:has(> .scenery-root) .workspace-split.mod-right-split {
   background-color: color-mix(in srgb, var(--background-secondary) var(--scenery-panel, 25%), transparent) !important;
 }
 
 /* Active tab: keep it distinguishable without an opaque slab. */
-body.scenery-active .workspace-tab-header.is-active,
-body.scenery-active .mod-root .workspace-tab-header.is-active {
+body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active,
+body.scenery-active:has(> .scenery-root) .mod-root .workspace-tab-header.is-active {
   background-color: color-mix(in srgb, var(--background-primary) 45%, transparent) !important;
   box-shadow: none;
 }
 
-body.scenery-active .workspace-tab-header.is-active::before,
-body.scenery-active .workspace-tab-header.is-active::after {
+body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::before,
+body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::after {
   display: none;
 }
 

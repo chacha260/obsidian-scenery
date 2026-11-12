@@ -1,7 +1,7 @@
 import { App, Notice } from "obsidian";
 import { EffectPlayer } from "./effects";
 import { t } from "./i18n";
-import { buildDocument, loadPackage, NoteInfo, PackageManifest, PackageState, readTheme, resolveValues } from "./package";
+import { makeState, NoteInfo, PackageFrame, PackageManifest, PackageState, readTheme, resolveValues } from "./package";
 import { SceneRuntime } from "./scene";
 import { resolveSource } from "./source";
 import type { ScenerySettings, WallpaperItem } from "./types";
@@ -14,7 +14,7 @@ interface Layer {
   effect?: EffectPlayer;
   scene?: SceneRuntime;
   /** Set for packages: the frame speaks the scenery message protocol. */
-  pkg?: { frame: HTMLIFrameElement; item: WallpaperItem; manifest: PackageManifest };
+  pkg?: { frame: PackageFrame; item: WallpaperItem };
 }
 
 export class Renderer {
@@ -39,22 +39,21 @@ export class Renderer {
   }
 
   private post(key: keyof PackageState, value: unknown) {
-    // The frame is sandboxed with an opaque origin, so "*" is the only target that reaches it.
-    this.current?.pkg?.frame.contentWindow?.postMessage({ scenery: 1, key, value }, "*");
+    this.current?.pkg?.frame.post(key, value);
   }
 
   /** Re-send property values and note access after the user changed them. */
   updatePackage(item: WallpaperItem, manifest: PackageManifest) {
     const pkg = this.current?.pkg;
     if (!pkg || pkg.item.id !== item.id) return;
-    pkg.manifest = manifest;
+    pkg.frame.manifest = manifest;
     this.post("props", resolveValues(manifest, item.values));
     this.post("note", this.noteFor(item, manifest));
   }
 
   noteChanged() {
     const pkg = this.current?.pkg;
-    if (pkg) this.post("note", this.noteFor(pkg.item, pkg.manifest));
+    if (pkg?.frame.manifest) this.post("note", this.noteFor(pkg.item, pkg.frame.manifest));
   }
 
   /** Load the current wallpaper again, e.g. after its files changed on disk. */
@@ -63,25 +62,20 @@ export class Renderer {
     this.show(item);
   }
 
-  private async showPackage(item: WallpaperItem, layer: Layer, reveal: () => void, fail: () => void) {
-    try {
-      const { manifest, html, baseUrl } = await loadPackage(this.app, item.source);
-      const frame = layer.el.createEl("iframe", { cls: "scenery-media" });
-      // Scripts may run, but the page gets an opaque origin: no access to the vault or the app.
-      frame.setAttribute("sandbox", "allow-scripts");
-      layer.pkg = { frame, item, manifest };
-      frame.addEventListener("load", reveal, { once: true });
-      frame.srcdoc = buildDocument(html, baseUrl, {
-        props: resolveValues(manifest, item.values),
-        theme: readTheme(),
-        note: this.noteFor(item, manifest),
+  private showPackage(item: WallpaperItem, layer: Layer, reveal: () => void, fail: () => void) {
+    const frame = new PackageFrame(this.app, layer.el, item.source, (manifest) =>
+      makeState(manifest, item.values, {
         paused: this.paused,
         pointer: this.pointer,
-      });
-    } catch (e) {
+        note: this.noteFor(item, manifest),
+        fps: this.getSettings().fps,
+      })
+    );
+    layer.pkg = { frame, item };
+    frame.loaded.then(reveal, (e) => {
       console.error("Scenery: could not load package", item.source, e);
       fail();
-    }
+    });
   }
 
   mount() {
@@ -170,7 +164,7 @@ export class Renderer {
     this.current = layer;
 
     if (item.type === "package") {
-      void this.showPackage(item, layer, reveal, fail);
+      this.showPackage(item, layer, reveal, fail);
       return;
     }
 
@@ -262,6 +256,7 @@ export class Renderer {
     this.pointerFrame = requestAnimationFrame(() => {
       this.applyPointer();
       this.post("pointer", this.pointer);
+      this.current?.scene?.setPointer(this.pointer);
     });
   }
 }

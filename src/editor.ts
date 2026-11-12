@@ -1,7 +1,9 @@
 import { ItemView, Menu, Setting, WorkspaceLeaf, setIcon } from "obsidian";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
-import { FilePicker } from "./pickers";
+import { loadManifest } from "./package";
+import { FilePicker, PackagePicker } from "./pickers";
+import { renderProperties } from "./propsui";
 import {
   BLEND_MODES,
   EFFECT_IDS,
@@ -17,10 +19,10 @@ import {
 export const EDITOR_VIEW = "scenery-scene-editor";
 
 type NumericKey = {
-  [K in keyof SceneLayer]: SceneLayer[K] extends number ? K : never;
+  [K in keyof SceneLayer]-?: SceneLayer[K] extends number ? K : never;
 }[keyof SceneLayer];
 
-const KIND_ICON: Record<LayerKind, string> = { image: "image", video: "film", effect: "sparkles", color: "palette" };
+const KIND_ICON: Record<LayerKind, string> = { image: "image", video: "film", effect: "sparkles", color: "palette", package: "package" };
 
 /** Sidebar panel for composing a scene while watching the real wallpaper behind the workspace. */
 export class SceneEditorView extends ItemView {
@@ -88,12 +90,20 @@ export class SceneEditorView extends ItemView {
     }
     const layers = (scene.scene ??= []);
 
-    new Setting(el).setName(t("editor.name")).addText((text) =>
-      text.setValue(scene.name).onChange((v) => {
-        scene.name = v || t("type.scene");
-        this.changed();
-      })
-    );
+    new Setting(el)
+      .setName(t("editor.name"))
+      .addText((text) =>
+        text.setValue(scene.name).onChange((v) => {
+          scene.name = v || t("type.scene");
+          this.changed();
+        })
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon("download")
+          .setTooltip(t("cmd.exportScene"))
+          .onClick(() => void this.plugin.exportScene(scene.id))
+      );
     new Setting(el)
       .setName(t("editor.noDim"))
       .setDesc(t("editor.noDim.desc"))
@@ -112,7 +122,7 @@ export class SceneEditorView extends ItemView {
           .setCta()
           .onClick((evt) => {
             const menu = new Menu();
-            for (const kind of ["image", "video", "effect", "color"] as LayerKind[]) {
+            for (const kind of ["image", "video", "effect", "color", "package"] as LayerKind[]) {
               menu.addItem((item) =>
                 item
                   .setTitle(t(`kind.${kind}`))
@@ -242,6 +252,45 @@ export class SceneEditorView extends ItemView {
             this.changed();
           })
       );
+    }
+
+    if (layer.kind === "package") {
+      new Setting(el)
+        .setName(t("kind.package"))
+        .setDesc(t("editor.package.desc"))
+        .addText((text) => {
+          text.setValue(layer.source).setPlaceholder("Scenery/…");
+          text.inputEl.addEventListener("change", () => {
+            layer.source = text.getValue().trim().replace(/\/+$/, "");
+            layer.values = {};
+            this.changed(true);
+          });
+        })
+        .addExtraButton((b) =>
+          b
+            .setIcon("folder-open")
+            .setTooltip(t("set.add.folder"))
+            .onClick(() => {
+              new PackagePicker(this.app, (folder) => {
+                layer.source = folder.path;
+                layer.values = {};
+                if (layer.name === t("kind.package")) layer.name = folder.name;
+                this.changed(true);
+              }).open();
+            })
+        );
+      if (layer.source) {
+        // The manifest is read from disk, so its controls arrive a moment after the rest.
+        const box = el.createDiv();
+        loadManifest(this.app, layer.source).then(
+          (manifest) =>
+            renderProperties(box, manifest, layer.values, (key, value) => {
+              (layer.values ??= {})[key] = value;
+              this.changed();
+            }),
+          (e) => box.createEl("p", { text: `${t("pkg.badManifest")} ${String(e)}`, cls: "scenery-editor-hint" })
+        );
+      }
     }
 
     if (layer.kind === "effect") {

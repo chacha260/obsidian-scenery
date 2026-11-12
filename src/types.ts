@@ -15,7 +15,7 @@ export interface WallpaperItem {
   allowNote?: boolean;
 }
 
-export type LayerKind = "image" | "video" | "effect" | "color";
+export type LayerKind = "image" | "video" | "effect" | "color" | "package";
 export const BLEND_MODES = [
   "normal", "screen", "lighten", "color-dodge", "multiply", "darken", "overlay", "soft-light", "hard-light", "difference", "hue", "color", "luminosity",
 ] as const;
@@ -27,8 +27,10 @@ export interface SceneLayer {
   id: string;
   name: string;
   kind: LayerKind;
-  /** Image/video: vault path, absolute path or URL. Effect: effect id. */
+  /** Image/video: vault path, absolute path or URL. Effect: effect id. Package: vault folder. */
   source: string;
+  /** Package layers: values for the properties the package declares. */
+  values?: Record<string, unknown>;
   visible: boolean;
   opacity: number;
   blend: BlendMode;
