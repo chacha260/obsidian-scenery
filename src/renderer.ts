@@ -27,6 +27,7 @@ export class Renderer {
   private pointerFrame = 0;
 
   private pointer = { x: 0.5, y: 0.5 };
+  private preview = false;
 
   private doc: Document;
 
@@ -91,6 +92,7 @@ export class Renderer {
     this.stage = this.root.createDiv({ cls: "scenery-stage" });
     this.root.createDiv({ cls: "scenery-dim" });
     this.root.classList.toggle("is-paused", this.paused);
+    this.root.classList.toggle("is-preview", this.preview);
     this.doc.body.prepend(this.root);
     this.doc.body.classList.add("scenery-active");
   }
@@ -243,6 +245,12 @@ export class Renderer {
       void layer.video?.play().catch(() => undefined);
       layer.effect?.start();
     }
+  }
+
+  /** Lift the readability dimming while a scene is being judged in the editor. */
+  setPreview(preview: boolean) {
+    this.preview = preview;
+    this.root?.classList.toggle("is-preview", preview);
   }
 
   themeChanged() {

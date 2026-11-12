@@ -117,7 +117,9 @@ npm test
 
 `npm test` builds the plugin against a small stand-in for the Obsidian API (`test/harness/stub.js`) and exercises it in headless Chromium. It checks the plugin's own logic; it does not replace trying a change in Obsidian. The first time, install the browser with `npx playwright install chromium`.
 
-Pushing a tag that matches the version in `manifest.json` builds a release with GitHub Actions.
+`npm run lint` runs `eslint-plugin-obsidianmd`, the rule set the Obsidian community directory applies to submissions.
+
+To release, bump the version with `npm version <new version>`, push, then either push a tag equal to that version or run the **Release** workflow from the Actions tab. The workflow lints, tests, builds, attests the build provenance and publishes the release.
 
 ## Licence
 

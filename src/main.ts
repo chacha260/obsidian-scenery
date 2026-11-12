@@ -138,6 +138,7 @@ export default class SceneryPlugin extends Plugin {
   private attachWindow(win: Window) {
     if (this.renderers.has(win)) return;
     const renderer = new Renderer(this.app, win, () => this.settings, () => this.noteInfo());
+    renderer.setPreview(this.preview);
     this.renderers.set(win, renderer);
     this.registerDomEvent(win, "blur", () => this.updatePaused());
     this.registerDomEvent(win, "focus", () => this.updatePaused());
@@ -308,6 +309,14 @@ export default class SceneryPlugin extends Plugin {
     this.setPaused(this.userPaused || (this.settings.pauseOnBlur && background));
   }
 
+  /** Whether the editor's "preview without dimming" is on. Not saved. */
+  preview = false;
+
+  setPreview(preview: boolean) {
+    this.preview = preview;
+    this.all((r) => r.setPreview(preview));
+  }
+
   setPaused(paused: boolean) {
     this.all((r) => r.setPaused(paused));
   }
@@ -320,7 +329,7 @@ export default class SceneryPlugin extends Plugin {
     const ms = Math.max(0.1, s.intervalMinutes) * 60_000;
     this.slideshowTimer = window.setInterval(() => {
       // Don't burn through the playlist while nobody is looking.
-      if (document.hidden) return;
+      if ([...this.renderers.keys()].every((win) => win.document.hidden)) return;
       void (s.shuffle ? this.random() : this.step(1));
     }, ms);
     this.registerInterval(this.slideshowTimer);

@@ -88,7 +88,7 @@ const stripTags = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
 /** Wallpaper Engine colours are "r g b" with 0..1 components. */
 function weColorToHex(value: unknown): string {
-  const parts = String(value ?? "1 1 1").trim().split(/\s+/).map(Number);
+  const parts = (typeof value === "string" ? value : "1 1 1").trim().split(/\s+/).map(Number);
   if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return "#ffffff";
   return "#" + parts.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, "0")).join("");
 }
@@ -136,7 +136,7 @@ export async function loadManifest(app: App, folder: string): Promise<PackageMan
   if (!useOwn && !(await adapter.exists(foreign))) throw new Error(`${MANIFEST_FILE} not found in "${folder}"`);
   const data: unknown = JSON.parse(await adapter.read(useOwn ? own : foreign));
   if (typeof data !== "object" || data === null) throw new Error("the manifest must be a JSON object");
-  return useOwn ? (data as PackageManifest) : fromWallpaperEngine(data as Record<string, unknown>);
+  return useOwn ? (data) : fromWallpaperEngine(data as Record<string, unknown>);
 }
 
 export async function loadPackage(app: App, folder: string) {
@@ -171,7 +171,7 @@ export function resolveValues(manifest: PackageManifest, saved: Record<string, u
     } else if (p.type === "color") {
       out[key] = typeof value === "string" ? value : "#ffffff";
     } else {
-      out[key] = value == null ? "" : String(value);
+      out[key] = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : "";
     }
   }
   return out;

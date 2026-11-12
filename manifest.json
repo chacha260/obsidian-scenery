@@ -1,9 +1,10 @@
 {
   "id": "scenery",
   "name": "Scenery",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minAppVersion": "1.7.2",
   "description": "Animated wallpapers behind your workspace: images, videos, web pages and built-in effects, with slideshow, dimming, blur and parallax.",
   "author": "chacha260",
+  "authorUrl": "https://github.com/chacha260",
   "isDesktopOnly": true
 }

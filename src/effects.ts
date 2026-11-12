@@ -284,7 +284,7 @@ export class EffectPlayer {
 
   constructor(parent: HTMLElement, id: string, private options: EffectOptions = {}) {
     this.doc = parent.ownerDocument;
-    this.win = (this.doc.defaultView ?? window) as Window & typeof globalThis;
+    this.win = (this.doc.defaultView ?? window);
     this.palette = readPalette(this.doc, options);
     this.canvas = parent.createEl("canvas", { cls: "scenery-media" });
     this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;

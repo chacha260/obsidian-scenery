@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Platform, PluginSettingTab, Setting, setIcon } from "obsidian";
+import { App, Modal, Notice, Platform, PluginSettingTab, Setting, setIcon, TFolder } from "obsidian";
 import { moveItem, reorderable } from "./dnd";
 import { EffectPlayer } from "./effects";
 import { hasManifest, loadManifest, PackageManifest } from "./package";
@@ -135,7 +135,7 @@ export class ScenerySettingTab extends PluginSettingTab {
         s
           .setLimits(...range)
           .setValue(this.plugin.settings[key])
-          .setDynamicTooltip()
+          
           .onChange(async (v) => {
             this.plugin.settings[key] = v;
             await this.commit(full);
@@ -222,6 +222,34 @@ export class ScenerySettingTab extends PluginSettingTab {
     }
   }
 
+  /** Add what a vault folder holds: a package, an exported scene, or loose images and videos. */
+  private async addFolder(folder: TFolder) {
+    const { plugin } = this;
+    const s = plugin.settings;
+    // A folder holding scenery.json is a wallpaper package, not a pile of media.
+    if (!folder.isRoot() && (await hasManifest(this.app, folder.path))) {
+      const manifest = await loadManifest(this.app, folder.path).catch(() => null);
+      if (manifest?.type === "scene") {
+        // An exported scene comes back as an ordinary, editable scene.
+        const item: WallpaperItem = { id: uid(), name: manifest.name || folder.name, type: "scene", source: "", scene: importScene(manifest, folder.path) };
+        s.items.push(item);
+        new Notice(t("notice.added", { n: 1 }));
+        await plugin.setActive(item.id);
+        this.display();
+      } else {
+        void this.addAndShow([folder.path], "package", manifest?.name || folder.name);
+      }
+      return;
+    }
+    const prefix = folder.isRoot() ? "" : folder.path + "/";
+    const paths = this.app.vault
+      .getFiles()
+      .filter((f) => f.path.startsWith(prefix) && ["image", "video"].includes(detectType(f.path) ?? ""))
+      .map((f) => f.path)
+      .sort();
+    void this.addAndShow(paths);
+  }
+
   private async addAndShow(sources: string[], type?: WallpaperType, name?: string) {
     const before = this.plugin.settings.items.length;
     const ids = this.plugin.addItems(sources, type, name);
@@ -265,10 +293,9 @@ export class ScenerySettingTab extends PluginSettingTab {
             : `${t(`type.${item.type}`)} · ${item.source}`
         );
       this.thumbnail(row, item);
-      reorderable(row.settingEl, "scenery-library", index, async (from, to) => {
+      reorderable(row.settingEl, "scenery-library", index, (from, to) => {
         moveItem(s.items, from, to);
-        await this.commit(true);
-        this.display();
+        void this.commit(true).then(() => this.display());
       });
       if (item.type === "scene") {
         row.addExtraButton((b) =>
@@ -286,10 +313,9 @@ export class ScenerySettingTab extends PluginSettingTab {
           .setIcon("pencil")
           .setTooltip(t("set.rename"))
           .onClick(() => {
-            new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), async (name) => {
+            new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), (name) => {
               item.name = name;
-              await this.commit(true);
-              this.display();
+              void this.commit(true).then(() => this.display());
             }).open();
           })
       );
@@ -328,30 +354,7 @@ export class ScenerySettingTab extends PluginSettingTab {
       )
       .addButton((b) =>
         b.setButtonText(t("set.add.folder")).onClick(() => {
-          new FolderPicker(this.app, async (folder) => {
-            // A folder holding scenery.json is a wallpaper package, not a pile of media.
-            if (!folder.isRoot() && (await hasManifest(this.app, folder.path))) {
-              const manifest = await loadManifest(this.app, folder.path).catch(() => null);
-              if (manifest?.type === "scene") {
-                // An exported scene comes back as an ordinary, editable scene.
-                const item: WallpaperItem = { id: uid(), name: manifest.name || folder.name, type: "scene", source: "", scene: importScene(manifest, folder.path) };
-                s.items.push(item);
-                new Notice(t("notice.added", { n: 1 }));
-                await plugin.setActive(item.id);
-                this.display();
-              } else {
-                void this.addAndShow([folder.path], "package", manifest?.name || folder.name);
-              }
-              return;
-            }
-            const prefix = folder.isRoot() ? "" : folder.path + "/";
-            const paths = this.app.vault
-              .getFiles()
-              .filter((f) => f.path.startsWith(prefix) && ["image", "video"].includes(detectType(f.path) ?? ""))
-              .map((f) => f.path)
-              .sort();
-            void this.addAndShow(paths);
-          }).open();
+          new FolderPicker(this.app, (folder) => void this.addFolder(folder)).open();
         })
       )
       .addButton((b) =>

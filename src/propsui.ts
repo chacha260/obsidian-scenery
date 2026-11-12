@@ -14,7 +14,7 @@ export function renderProperties(
     if (p.description) setting.setDesc(p.description);
     if (p.type === "slider") {
       setting.addSlider((sl) => {
-        sl.setLimits(p.min ?? 0, p.max ?? 100, p.step ?? 1).setValue(values[key] as number).setDynamicTooltip();
+        sl.setLimits(p.min ?? 0, p.max ?? 100, p.step ?? 1).setValue(values[key] as number);
         // Update the wallpaper while dragging, not only on release.
         sl.sliderEl.addEventListener("input", () => set(key, Number(sl.sliderEl.value)));
         sl.onChange((v) => set(key, v));

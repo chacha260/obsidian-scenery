@@ -24,7 +24,7 @@ await build({
   logLevel: "warning",
 });
 
-const POPOUT = `<!doctype html><html><head><link rel="stylesheet" href="/styles.css"><style>html,body{margin:0;height:100%}body{--background-primary:#1e1e1e;--background-secondary:#262626;--interactive-accent:#8a5cf5;background:var(--background-primary)}</style></head><body class="theme-dark"><div class="app-container" style="height:100%;background:var(--background-primary)"></div></body></html>`;
+const POPOUT = `<!doctype html><html><head><link rel="stylesheet" href="/styles.css"><style>html,body{margin:0;height:100%}body{--background-primary:#1e1e1e;--background-secondary:#262626;--interactive-accent:#8a5cf5;background:var(--background-primary)}.app-container{height:100%;background:var(--background-primary)}</style></head><body class="theme-dark"><div class="app-container"></div></body></html>`;
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".webm": "video/webm", ".json": "application/json" };
 const server = http.createServer(async (req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);

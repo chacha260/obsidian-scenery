@@ -48,7 +48,7 @@ export class SceneEditorView extends ItemView {
   }
 
   async onClose() {
-    document.body.classList.remove("scenery-preview");
+    this.plugin.setPreview(false);
   }
 
   private get scenes(): WallpaperItem[] {
@@ -110,8 +110,7 @@ export class SceneEditorView extends ItemView {
       .setDesc(t("editor.noDim.desc"))
       .addToggle((tg) =>
         tg
-          .setValue(document.body.classList.contains("scenery-preview"))
-          .onChange((v) => document.body.classList.toggle("scenery-preview", v))
+.setValue(this.plugin.preview).onChange((v) => this.plugin.setPreview(v))
       );
 
     new Setting(el)
@@ -201,7 +200,7 @@ export class SceneEditorView extends ItemView {
     const setting = new Setting(el).setName(name);
     if (desc) setting.setDesc(desc);
     setting.addSlider((s) => {
-      s.setLimits(...range).setValue(layer[key]).setDynamicTooltip();
+      s.setLimits(...range).setValue(layer[key]);
       // Update the wallpaper while dragging, not only on release.
       s.sliderEl.addEventListener("input", () => {
         layer[key] = Number(s.sliderEl.value);

@@ -53,58 +53,61 @@ iframe.scenery-media {
  * Obsidian copies body classes to its other windows (settings, pop-outs), which
  * have no wallpaper layer. Going transparent there would expose the bare window,
  * so every rule also requires the layer to be present in this document.
+ *
+ * The class is repeated on purpose: it raises specificity so these rules beat the
+ * app's and themes' own background rules without resorting to !important.
  */
 
-body.scenery-active:has(> .scenery-root) {
-  background-color: transparent !important;
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) {
+  background-color: transparent;
 }
 
-body.scenery-active:has(> .scenery-root) .app-container,
-body.scenery-active:has(> .scenery-root) .horizontal-main-container,
-body.scenery-active:has(> .scenery-root) .workspace,
-body.scenery-active:has(> .scenery-root) .workspace-split,
-body.scenery-active:has(> .scenery-root) .workspace-tabs,
-body.scenery-active:has(> .scenery-root) .workspace-tab-container,
-body.scenery-active:has(> .scenery-root) .workspace-tab-header-container,
-body.scenery-active:has(> .scenery-root) .workspace-leaf,
-body.scenery-active:has(> .scenery-root) .workspace-leaf-content,
-body.scenery-active:has(> .scenery-root) .view-header,
-body.scenery-active:has(> .scenery-root) .view-content,
-body.scenery-active:has(> .scenery-root) .nav-header,
-body.scenery-active:has(> .scenery-root) .nav-files-container,
-body.scenery-active:has(> .scenery-root) .workspace-sidedock-vault-profile,
-body.scenery-active:has(> .scenery-root) .markdown-source-view,
-body.scenery-active:has(> .scenery-root) .markdown-reading-view,
-body.scenery-active:has(> .scenery-root) .cm-editor,
-body.scenery-active:has(> .scenery-root) .cm-scroller,
-body.scenery-active:has(> .scenery-root) .cm-gutters,
-body.scenery-active:has(> .scenery-root) .sidebar-toggle-button,
-body.scenery-active:has(> .scenery-root) .titlebar,
-body.scenery-active:has(> .scenery-root) .titlebar-inner,
-body.scenery-active:has(> .scenery-root) .status-bar {
-  background-color: transparent !important;
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .app-container,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .horizontal-main-container,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-split,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tabs,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tab-container,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tab-header-container,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-leaf,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-leaf-content,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .view-header,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .view-content,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .nav-header,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .nav-files-container,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-sidedock-vault-profile,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .markdown-source-view,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .markdown-reading-view,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .cm-editor,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .cm-scroller,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .cm-gutters,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .sidebar-toggle-button,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .titlebar,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .titlebar-inner,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .status-bar {
+  background-color: transparent;
 }
 
-body.scenery-active:has(> .scenery-root) .workspace-ribbon.mod-left::before {
-  background-color: transparent !important;
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-ribbon.mod-left::before {
+  background-color: transparent;
 }
 
 /* Sidebars and ribbon get their own adjustable tint. */
-body.scenery-active:has(> .scenery-root) .workspace-ribbon,
-body.scenery-active:has(> .scenery-root) .workspace-split.mod-left-split,
-body.scenery-active:has(> .scenery-root) .workspace-split.mod-right-split {
-  background-color: color-mix(in srgb, var(--background-secondary) var(--scenery-panel, 25%), transparent) !important;
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-ribbon,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-split.mod-left-split,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-split.mod-right-split {
+  background-color: color-mix(in srgb, var(--background-secondary) var(--scenery-panel, 25%), transparent);
 }
 
 /* Active tab: keep it distinguishable without an opaque slab. */
-body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active,
-body.scenery-active:has(> .scenery-root) .mod-root .workspace-tab-header.is-active {
-  background-color: color-mix(in srgb, var(--background-primary) 45%, transparent) !important;
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .mod-root .workspace-tab-header.is-active {
+  background-color: color-mix(in srgb, var(--background-primary) 45%, transparent);
   box-shadow: none;
 }
 
-body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::before,
-body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::after {
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::before,
+body.scenery-active.scenery-active.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::after {
   display: none;
 }
 
@@ -202,7 +205,7 @@ body.scenery-active:has(> .scenery-root) .workspace-tab-header.is-active::after 
 }
 
 /* Editor: temporarily lift the readability dimming to judge the scene itself. */
-body.scenery-preview .scenery-dim {
+.scenery-root.is-preview .scenery-dim {
   opacity: 0;
 }
 
