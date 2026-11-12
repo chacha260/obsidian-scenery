@@ -1,10 +1,14 @@
-import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
+import { App, Modal, Notice, Platform, PluginSettingTab, Setting, setIcon } from "obsidian";
+import { moveItem, reorderable } from "./dnd";
+import { EffectPlayer } from "./effects";
 import { hasManifest, loadManifest, PackageManifest } from "./package";
 import { renderProperties } from "./propsui";
 import { importScene } from "./sceneio";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
-import { FilePicker, FolderPicker } from "./pickers";
+import { FilePicker, FolderPicker, NameModal } from "./pickers";
+import { SceneRuntime } from "./scene";
+import { resolveSource } from "./source";
 import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
 
 class UrlModal extends Modal {
@@ -62,6 +66,47 @@ type NumericKey = {
 export class ScenerySettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: SceneryPlugin) {
     super(app, plugin);
+  }
+
+  /** Live previews in the library; they hold canvases and observers that must be released. */
+  private previews: { destroy(): void }[] = [];
+
+  private clearPreviews() {
+    for (const p of this.previews) p.destroy();
+    this.previews = [];
+  }
+
+  hide() {
+    this.clearPreviews();
+  }
+
+  /** A small still preview at the start of a library row. */
+  private thumbnail(row: Setting, item: WallpaperItem) {
+    const el = row.settingEl.createDiv({ cls: "scenery-thumb" });
+    row.settingEl.prepend(el);
+    if (item.type === "image") {
+      const img = el.createEl("img", { cls: "scenery-media" });
+      img.loading = "lazy";
+      img.src = resolveSource(this.app, item.source);
+    } else if (item.type === "video") {
+      const video = el.createEl("video", { cls: "scenery-media" });
+      video.muted = true;
+      video.preload = "metadata";
+      // A media fragment makes the browser show a frame from inside the clip, not a black first frame.
+      video.src = `${resolveSource(this.app, item.source)}#t=0.5`;
+    } else if (item.type === "effect") {
+      // Never started: the player draws one frame and stays still.
+      this.previews.push(new EffectPlayer(el, item.source));
+    } else if (item.type === "scene") {
+      const scene = new SceneRuntime(this.app, el, () => this.plugin.settings);
+      scene.setPaused(true);
+      // Package layers would each start a live page; leave them out of a thumbnail.
+      scene.sync((item.scene ?? []).filter((l) => l.kind !== "package"));
+      this.previews.push(scene);
+    } else {
+      el.addClass("is-icon");
+      setIcon(el, item.type === "web" ? "globe" : "package");
+    }
   }
 
   private closeSettings() {
@@ -194,6 +239,7 @@ export class ScenerySettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const { plugin } = this;
     const s = plugin.settings;
+    this.clearPreviews();
     containerEl.empty();
 
     new Setting(containerEl)
@@ -209,7 +255,7 @@ export class ScenerySettingTab extends PluginSettingTab {
     // ---- Library ----
     new Setting(containerEl).setName(t("set.library")).setHeading();
     if (!s.items.length) containerEl.createEl("p", { text: t("set.library.empty"), cls: "setting-item-description" });
-    for (const item of s.items) {
+    s.items.forEach((item, index) => {
       const active = item.id === s.activeId;
       const row = new Setting(containerEl)
         .setName(item.name)
@@ -218,10 +264,16 @@ export class ScenerySettingTab extends PluginSettingTab {
             ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
             : `${t(`type.${item.type}`)} · ${item.source}`
         );
+      this.thumbnail(row, item);
+      reorderable(row.settingEl, "scenery-library", index, async (from, to) => {
+        moveItem(s.items, from, to);
+        await this.commit(true);
+        this.display();
+      });
       if (item.type === "scene") {
         row.addExtraButton((b) =>
           b
-            .setIcon("pencil")
+            .setIcon("layers")
             .setTooltip(t("cmd.editScene"))
             .onClick(() => {
               this.closeSettings();
@@ -229,6 +281,18 @@ export class ScenerySettingTab extends PluginSettingTab {
             })
         );
       }
+      row.addExtraButton((b) =>
+        b
+          .setIcon("pencil")
+          .setTooltip(t("set.rename"))
+          .onClick(() => {
+            new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), async (name) => {
+              item.name = name;
+              await this.commit(true);
+              this.display();
+            }).open();
+          })
+      );
       row
         .addButton((b) => {
           b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
@@ -251,7 +315,7 @@ export class ScenerySettingTab extends PluginSettingTab {
         );
       row.settingEl.addClass("scenery-item");
       row.settingEl.toggleClass("is-active", active);
-    }
+    });
 
     const addRow = new Setting(containerEl).setName(t("set.add")).setDesc(t("set.add.desc"));
     // Many buttons: stack them under the label and let them wrap instead of overflowing.
@@ -358,6 +422,17 @@ export class ScenerySettingTab extends PluginSettingTab {
       .addToggle((tg) =>
         tg.setValue(s.pauseOnBlur).onChange(async (v) => {
           s.pauseOnBlur = v;
+          await this.commit(true);
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("set.popouts"))
+      .setDesc(t("set.popouts.desc"))
+      .addToggle((tg) =>
+        tg.setValue(s.popouts).onChange(async (v) => {
+          s.popouts = v;
+          plugin.syncWindows();
           await this.commit(true);
         })
       );

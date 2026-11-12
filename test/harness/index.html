@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  /* A rough imitation of Obsidian's layout and theme variables. */
+  html, body { margin: 0; height: 100%; }
+  body {
+    --background-primary: #1e1e1e; --background-secondary: #262626; --text-normal: #dadada; --text-muted: #999;
+    --interactive-accent: hsl(calc(258), calc(88%), calc(66%));
+    --background-modifier-border: #444; --background-modifier-hover: #333; --background-modifier-active-hover: #3a3a5a;
+    --size-2-1: 2px; --size-2-2: 4px; --size-4-1: 4px; --size-4-2: 8px; --size-4-3: 12px; --size-4-4: 16px; --radius-s: 4px;
+    background: var(--background-primary); color: var(--text-normal); font: 13px sans-serif;
+  }
+  .app-container { height: 100%; display: flex; background: var(--background-primary); }
+  .workspace-ribbon { width: 44px; background: var(--background-secondary); }
+  .workspace-split.mod-left-split { width: 200px; background: var(--background-secondary); padding: 12px; }
+  .workspace-split.mod-root { flex: 1; background: var(--background-primary); padding: 30px; }
+  #panel { width: 540px; overflow: auto; background: var(--background-secondary); }
+  .setting-item { display: flex; align-items: center; padding: 6px 0; }
+  .setting-item-info { flex: 1; margin-right: 12px; }
+  .setting-item-control { display: flex; gap: 6px; flex-shrink: 0; }
+  .setting-item-description { color: var(--text-muted); font-size: 11px; }
+  button { white-space: nowrap; padding: 4px 12px; }
+  .clickable-icon { width: 18px; height: 18px; border: 1px solid #666; }
+  .clickable-icon.is-disabled { opacity: .3; }
+</style>
+</head>
+<body class="theme-dark">
+<div class="app-container">
+  <div class="workspace-ribbon"></div>
+  <div class="workspace-split mod-left-split">Files</div>
+  <div class="workspace-split mod-root"><h1>Scenery test</h1><p>Readability check over the wallpaper.</p></div>
+  <div class="workspace-split mod-right-split" id="panel"></div>
+</div>
+<script src="/bundle.js"></script>
+</body>
+</html>

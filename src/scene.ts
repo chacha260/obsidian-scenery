@@ -87,7 +87,7 @@ export class SceneRuntime {
       if (!this.paused) handle.effect.start();
     } else if (layer.kind === "package" && layer.source) {
       const pkg = new PackageFrame(this.app, motion, layer.source, (manifest) =>
-        makeState(manifest, layer.values, { paused: this.paused, pointer: this.pointer, note: null, fps: this.getSettings().fps })
+        makeState(manifest, layer.values, { doc: this.root.ownerDocument, paused: this.paused, pointer: this.pointer, note: null, fps: this.getSettings().fps })
       );
       handle.pkg = pkg;
       handle.media = pkg.frame;
@@ -168,7 +168,7 @@ export class SceneRuntime {
   }
 
   themeChanged() {
-    const theme = readTheme();
+    const theme = readTheme(this.root.ownerDocument);
     for (const h of this.handles.values()) {
       h.effect?.refreshPalette();
       h.pkg?.post("theme", theme);

@@ -1,108 +1,124 @@
 # Scenery
 
-Obsidian のワークスペースの背後に「動く壁紙」を表示するプラグインです。Wallpaper Engine のように、画像・動画・Web ページ・組み込みアニメーションを壁紙にできます。
+Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper Engine: images, videos, web pages, built-in effects, and wallpapers you compose or code yourself.
 
-*Animated wallpapers behind your Obsidian workspace: images, videos, web pages and built-in effects. The settings UI is available in English and Japanese.*
+[日本語の README はこちら](README.ja.md)
 
-## できること
+> **Network use.** Scenery itself makes no network requests. Web-page wallpapers and wallpaper packages are HTML pages, and the code in them **can** reach the internet, like any web page. Only add pages and packages you trust. See [Privacy and security](#privacy-and-security).
 
-| 種類 | 内容 |
+## Wallpaper types
+
+| Type | What it is |
 | --- | --- |
-| 画像 | png / jpg / gif / webp / avif / svg など |
-| 動画 | mp4 / webm / mov など。ループ再生、音量・再生速度を調整可能 |
-| Web ページ | Vault 内の `.html` または URL を背景に表示（Wallpaper Engine の Web 壁紙に近い使い方） |
-| エフェクト | Aurora / Starfield / Particles / Snow / Fireflies / Rain。テーマのアクセントカラーに追従 |
-| シーン | 画像・動画・エフェクト・色を重ねて自作する壁紙（下記） |
-| パッケージ | HTML / JS で書く壁紙。設定項目を宣言でき、テーマ配色やポインタ位置を受け取れる（下記） |
+| Image | png, jpg, gif, webp, avif, svg and more |
+| Video | mp4, webm, mov and more. Loops; volume and speed are adjustable |
+| Web page | An `.html` file in your vault, or a URL |
+| Effect | Aurora, Starfield, Particles, Snow, Fireflies, Rain. They follow your theme's accent colour |
+| Scene | Layers of images, videos, effects, colours and packages that you arrange in an editor, no code needed |
+| Package | A wallpaper written in HTML and JavaScript that declares its own settings |
 
-- **ライブラリ**: Vault のファイル、フォルダ一括、URL / 絶対パスから追加
-- **スライドショー**: 一定間隔で順番またはシャッフルで切り替え（クロスフェード）
-- **見た目の調整**: 読みやすさ（暗幕）、サイドバーの濃さ、ぼかし、明るさ、彩度、フィット方法、マウス視差
-- **省電力**: Obsidian が背面・非表示のあいだは動画とエフェクトを自動停止
-- **ファイルメニュー**: 画像・動画を右クリック →「壁紙に設定」
-- **コマンド**: オン/オフ、次へ、前へ、ランダム、一時停止、壁紙を選ぶ、シーンを作成、シーンを編集、壁紙パッケージを作成、壁紙を再読み込み、シーンをフォルダに書き出す
+## Features
 
-## シーン（壁紙の自作）
+- **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything.
+- **Slideshow**: switch on a timer, in order or shuffled, with a cross-fade.
+- **Appearance**: readability dimming, sidebar tint, blur, brightness, saturation, fit mode, mouse parallax.
+- **Battery-friendly**: videos and effects stop while no Obsidian window is focused.
+- **Pop-out windows** show the wallpaper too (can be turned off).
+- **File menu**: right-click an image or video and choose *Set as wallpaper*.
+- **Commands**: toggle, next, previous, random, pause, choose wallpaper, create scene, edit scene, export scene, create wallpaper package, reload wallpaper.
+- The settings are available in English and Japanese.
 
-コードを書かずに、レイヤーを重ねて壁紙を作れます。
+## Getting started
 
-1. コマンド「Scenery: シーンを作成」（または設定 → ライブラリの「シーンを作成」）を実行
-2. 右サイドバーに「シーンエディタ」が開き、作成中のシーンがそのまま壁紙として表示されます
-3. 「レイヤーを追加」で画像・動画・エフェクト・色（グラデーション）を重ねます
+Enable the plugin and the Aurora effect appears. Open **Settings → Scenery**, add wallpapers to the library and press **Use**. If text becomes hard to read, raise **Readability dimming**.
 
-レイヤーごとに次の項目を調整でき、変更はその場で壁紙に反映されます。
+## Scenes: compose a wallpaper without code
 
-- 表示/非表示、重ね順、複製、削除
-- 不透明度、合成モード（スクリーン・乗算・オーバーレイなど）、ぼかし
-- 拡大率と位置、フィット方法
-- 動き（左右/上下にゆれる・ただよう・ゆっくりズーム・回転・明滅）と、その大きさ・周期
-- 視差の奥行き（プラグイン設定の「マウス視差」と組み合わせて、レイヤーごとに動く量を変える）
-- エフェクトの色（テーマのアクセントカラー、または任意の色）
+1. Run the command **Scenery: Create scene** (or press **Create scene** in the library).
+2. The scene editor opens in the right sidebar, and the scene is shown as your wallpaper while you edit it.
+3. Press **Add layer** to stack images, videos, effects, colours or gradients, and packages.
 
-「暗幕なしでプレビュー」をオンにすると、読みやすさの暗幕を一時的に外してシーンそのものを確認できます。シーンはプラグインの設定データに保存されます。
+Each layer has:
 
-レイヤーには壁紙パッケージ（下記）も使えます。パッケージが宣言した設定項目は、レイヤーの設定欄に表示されます。
+- visibility, order (drag the rows), duplicate, delete
+- opacity, blend mode (screen, multiply, overlay and more), blur
+- scale, position and fit
+- motion (sway, drift, slow zoom, rotate, pulse) with amount and cycle length
+- parallax depth, so layers move by different amounts with the pointer
+- for effects, the theme accent colour or a colour of your choice
 
-### 書き出しと読み込み
+**Preview without dimming** temporarily hides the readability dimming so you can judge the scene itself.
 
-エディタの名前欄の横にある書き出しボタン（またはコマンド「シーンをフォルダに書き出す」）で、シーンを Vault の `Scenery/<シーン名>/` に書き出せます。Vault 内の画像・動画・パッケージはフォルダ内にコピーされるので、フォルダごと zip にして渡せます。URL と Vault 外のパスはコピーされず、そのまま記録されます。
+### Export and import
 
-受け取った側は、フォルダを Vault に置き、設定 → ライブラリ →「Vault のフォルダ」で選ぶと、編集可能なシーンとして取り込まれます。
+The export button next to the scene's name (or the command **Export scene to a folder**) writes the scene to `Scenery/<scene name>/` in your vault. Images, videos and packages from the vault are copied into that folder, so you can zip it and share it. URLs and paths outside the vault are recorded as they are, not copied.
 
-## パッケージ（HTML / JS で書く壁紙）
+To import, put the folder in a vault and choose it with **Vault folder** in the library. It arrives as an ordinary, editable scene.
 
-コマンド「Scenery: 壁紙パッケージを作成」で、動くひな形が Vault の `Scenery/<名前>/` に作られます。
+## Packages: write a wallpaper in HTML and JavaScript
 
-- `scenery.json` にスライダー・色・トグル・選択・テキストを書くと、設定画面に項目が自動で出ます
-- ページ内では `scenery.on("props" | "theme" | "pointer" | "paused" | "note", fn)` で値を受け取れます
-- ファイルを保存すると壁紙が自動で再読み込みされます
-- Obsidian が背面のあいだは、描画（`requestAnimationFrame`）が自動で止まります
+The command **Scenery: Create wallpaper package** creates a working example in `Scenery/<name>/`.
 
-詳しくは [docs/authoring.md](docs/authoring.md) を参照してください。
+- Declare sliders, colours, toggles, selects and text fields in `scenery.json`; they appear in the settings automatically.
+- In the page, `scenery.on("props" | "theme" | "pointer" | "paused" | "note", fn)` delivers the values.
+- Saving a file in the package reloads the wallpaper.
+- Drawing with `requestAnimationFrame` stops by itself while Obsidian is in the background.
 
-### Wallpaper Engine の Web 壁紙
+The full reference is in [docs/authoring.md](docs/authoring.md).
 
-`project.json` を持つ Wallpaper Engine の **Web 壁紙**のフォルダを Vault に置き、「Vault のフォルダ」で追加すると、パッケージとして読み込みます。
+### Wallpaper Engine web wallpapers (experimental)
 
-- `project.json` のユーザー設定（スライダー・色・チェックボックス・選択肢・テキスト入力）が設定画面に出て、`wallpaperPropertyListener.applyUserProperties` に届きます
-- `applyGeneralProperties`（fps）と `setPaused` も呼びます
-- 音声は取得できないため、`wallpaperRegisterAudioListener` には無音が届きます。音に反応する壁紙は動きません
-- `fetch()` や ES モジュールでローカルファイルを読む壁紙、ファイル選択の設定項目を使う壁紙は動かないことがあります
-- Scene 形式・Video 形式・Application 形式には対応していません
-- この互換機能は API の仕様に沿って実装したもので、実際の Workshop 作品での動作確認はしていません。利用が許可されている壁紙でお使いください
+A folder containing a Wallpaper Engine **web** wallpaper (`project.json`) can be added with **Vault folder** and is loaded as a package.
 
-## インストール（手動）
+- User properties from `project.json` (slider, colour, checkbox, combo, text input) appear in the settings and are passed to `wallpaperPropertyListener.applyUserProperties`. `applyGeneralProperties` and `setPaused` are called as well.
+- There is no audio capture: audio listeners receive silence, so audio-reactive wallpapers will not react.
+- Wallpapers that read local files with `fetch()` or ES modules, or that use file-picker properties, may not work.
+- Scene, video and application wallpapers are not supported.
+- This was built from the documented API and has not been tested against Workshop items. Use it with wallpapers you have the right to use.
 
-1. `npm install && npm run build` を実行
-2. `main.js` `manifest.json` `styles.css` を `<Vault>/.obsidian/plugins/scenery/` にコピー
-3. Obsidian の「設定 → コミュニティプラグイン」で **Scenery** を有効化
+## Privacy and security
 
-タグを push すると GitHub Actions がリリースを作るので、[BRAT](https://github.com/TfTHacker/obsidian42-brat) からも導入できます。
+- Scenery makes no network requests and collects nothing.
+- Web-page wallpapers and packages run in a sandboxed frame (`sandbox="allow-scripts"`). They cannot read your vault, your notes or the app. They can, however, make network requests like any web page.
+- A package can ask to learn the name and path of the note you have open. It only receives them if you turn that on for that wallpaper; it is off by default.
+- Wallpapers are behind the workspace and never receive clicks or key presses.
 
-## 使い方
+## Compatibility
 
-有効化すると Aurora エフェクトが表示されます。「設定 → Scenery」でライブラリに壁紙を追加し、「使う」を押すと切り替わります。文字が読みにくいときは「読みやすさ（暗幕）」を上げてください。
+- Desktop only.
+- Requires Obsidian 1.7.2 or later.
+- Tested with the default theme and with Minimal. Themes that force their own opaque backgrounds may leave some panels non-transparent.
+- The settings window is never made transparent.
 
-## 仕組み
+## Limitations
 
-- `body` の先頭に壁紙レイヤーを置き、ワークスペース各部の背景を透過させています。
-- 読みやすさは、壁紙の上にテーマの背景色を半透明で重ねて確保します。テーマの配色はそのまま使われます。
-- Web 壁紙とパッケージは `sandbox="allow-scripts"` の iframe で表示します。スクリプトは動きますが、Vault や Obsidian 本体にはアクセスできません。ネットワークには接続できるため、開いているノート名は壁紙ごとに許可したときだけ渡します。
+- No audio-reactive wallpapers.
+- Heavy videos combined with blur can use noticeable GPU time. Lower the effect frame rate or turn blur off if needed.
 
-## 制限
+## Installing manually
 
-- Web 壁紙とパッケージはクリックなどの操作を受け付けません（パッケージはポインタ位置を受け取れます）
-- Wallpaper Engine は Web 壁紙のみ対応（Scene 形式や音声反応には未対応）
-- 設定ウィンドウやポップアウトウィンドウは透過しません（壁紙はメインウィンドウのみ）
-- 独自の背景色を強く指定するテーマでは、一部のパネルが透過しないことがあります
+1. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
+2. Put them in `<vault>/.obsidian/plugins/scenery/`.
+3. Enable **Scenery** under **Settings → Community plugins**.
 
-## 開発
+## Development
 
 ```bash
 npm install
+```
+
+```bash
 npm run dev
 ```
 
-## ライセンス
+```bash
+npm test
+```
+
+`npm test` builds the plugin against a small stand-in for the Obsidian API (`test/harness/stub.js`) and exercises it in headless Chromium. It checks the plugin's own logic; it does not replace trying a change in Obsidian. The first time, install the browser with `npx playwright install chromium`.
+
+Pushing a tag that matches the version in `manifest.json` builds a release with GitHub Actions.
+
+## Licence
 
 MIT

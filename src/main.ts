@@ -1,8 +1,9 @@
-import { FuzzySuggestModal, Modal, Notice, Plugin, Setting, TFile, debounce, normalizePath } from "obsidian";
+import { FuzzySuggestModal, Notice, Plugin, TFile, debounce, normalizePath } from "obsidian";
 import { EDITOR_VIEW, SceneEditorView } from "./editor";
 import { t } from "./i18n";
 import { loadManifest, MANIFEST_FILE, NoteInfo, PackageManifest } from "./package";
 import { ensureFolder, exportScene, safeName } from "./sceneio";
+import { NameModal } from "./pickers";
 import { Renderer } from "./renderer";
 import { TEMPLATE_HTML, templateManifest } from "./template";
 import { ScenerySettingTab } from "./settings";
@@ -24,35 +25,10 @@ class WallpaperPicker extends FuzzySuggestModal<WallpaperItem> {
   }
 }
 
-class NameModal extends Modal {
-  private name = "";
-  constructor(plugin: SceneryPlugin, private onSubmit: (name: string) => void) {
-    super(plugin.app);
-  }
-  onOpen() {
-    this.setTitle(t("cmd.newPackage"));
-    const submit = () => {
-      if (!this.name) return;
-      this.close();
-      this.onSubmit(this.name);
-    };
-    new Setting(this.contentEl).setName(t("editor.name")).addText((text) => {
-      text.onChange((v) => (this.name = v.trim()));
-      text.inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.isComposing) submit();
-      });
-      window.setTimeout(() => text.inputEl.focus());
-    });
-    new Setting(this.contentEl).addButton((b) => b.setButtonText(t("pkg.create")).setCta().onClick(submit));
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-}
-
 export default class SceneryPlugin extends Plugin {
   settings: ScenerySettings = DEFAULT_SETTINGS;
-  private renderer!: Renderer;
+  /** One renderer per window showing the wallpaper. */
+  private renderers = new Map<Window, Renderer>();
   private userPaused = false;
   private slideshowTimer: number | null = null;
   /** Scene currently open in the editor panel. */
@@ -61,7 +37,6 @@ export default class SceneryPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    this.renderer = new Renderer(this.app, () => this.settings, () => this.noteInfo());
     this.addSettingTab(new ScenerySettingTab(this.app, this));
     this.registerView(EDITOR_VIEW, (leaf) => new SceneEditorView(leaf, this));
     this.addCommand({ id: "new-scene", name: t("cmd.newScene"), callback: () => void this.createScene() });
@@ -101,13 +76,13 @@ export default class SceneryPlugin extends Plugin {
         );
       })
     );
-    this.registerEvent(this.app.workspace.on("css-change", () => this.renderer.themeChanged()));
-    this.registerEvent(this.app.workspace.on("file-open", () => this.renderer.noteChanged()));
+    this.registerEvent(this.app.workspace.on("css-change", () => this.all((r) => r.themeChanged())));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.all((r) => r.noteChanged())));
 
     this.addCommand({
       id: "new-package",
       name: t("cmd.newPackage"),
-      callback: () => new NameModal(this, (name) => void this.createPackage(name)).open(),
+      callback: () => new NameModal(this.app, t("cmd.newPackage"), "", t("pkg.create"), (name) => void this.createPackage(name)).open(),
     });
     this.addCommand({ id: "reload", name: t("cmd.reload"), callback: () => this.reloadWallpaper() });
     this.addCommand({
@@ -135,19 +110,64 @@ export default class SceneryPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", onFileChange));
     this.registerEvent(this.app.vault.on("delete", onFileChange));
 
-    this.registerDomEvent(window, "blur", () => this.updatePaused());
-    this.registerDomEvent(window, "focus", () => this.updatePaused());
-    this.registerDomEvent(document, "visibilitychange", () => this.updatePaused());
-    this.registerDomEvent(document, "mousemove", (e) => {
-      this.renderer.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
-    });
+    this.attachWindow(window);
+    this.registerEvent(
+      this.app.workspace.on("window-open", (_workspaceWindow, win) => {
+        if (!this.settings.popouts) return;
+        this.attachWindow(win);
+        this.refresh();
+      })
+    );
+    this.registerEvent(this.app.workspace.on("window-close", (_workspaceWindow, win) => this.detachWindow(win)));
 
-    this.app.workspace.onLayoutReady(() => this.refresh());
+    this.app.workspace.onLayoutReady(() => {
+      this.syncWindows();
+      this.refresh();
+    });
   }
 
   onunload() {
-    this.renderer.unmount();
-    document.body.style.removeProperty("--scenery-panel");
+    this.all((r) => r.unmount());
+    this.renderers.clear();
+  }
+
+  private all(fn: (renderer: Renderer) => void) {
+    this.renderers.forEach(fn);
+  }
+
+  private attachWindow(win: Window) {
+    if (this.renderers.has(win)) return;
+    const renderer = new Renderer(this.app, win, () => this.settings, () => this.noteInfo());
+    this.renderers.set(win, renderer);
+    this.registerDomEvent(win, "blur", () => this.updatePaused());
+    this.registerDomEvent(win, "focus", () => this.updatePaused());
+    this.registerDomEvent(win.document, "visibilitychange", () => this.updatePaused());
+    this.registerDomEvent(win.document, "mousemove", (e) => {
+      renderer.setPointer(e.clientX / win.innerWidth, e.clientY / win.innerHeight);
+    });
+  }
+
+  private detachWindow(win: Window) {
+    const renderer = this.renderers.get(win);
+    if (!renderer || win === window) return;
+    this.renderers.delete(win);
+    try {
+      renderer.unmount();
+    } catch {
+      // The window is already gone; nothing left to clean up.
+    }
+  }
+
+  /** Attach to pop-out windows that are already open, or let go of them when the setting is off. */
+  syncWindows() {
+    if (!this.settings.popouts) {
+      for (const win of [...this.renderers.keys()]) this.detachWindow(win);
+      return;
+    }
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const win = leaf.view.containerEl.ownerDocument.defaultView;
+      if (win) this.attachWindow(win);
+    });
   }
 
   async loadSettings() {
@@ -171,12 +191,12 @@ export default class SceneryPlugin extends Plugin {
   /** Bring the DOM in line with the settings. */
   refresh() {
     if (this.settings.enabled) {
-      this.renderer.mount();
-      this.renderer.applyStyle();
+      this.all((r) => r.mount());
+      this.all((r) => r.applyStyle());
       this.updatePaused();
-      this.renderer.show(this.activeItem);
+      this.all((r) => r.show(this.activeItem));
     } else {
-      this.renderer.unmount();
+      this.all((r) => r.unmount());
     }
     this.restartSlideshow();
   }
@@ -187,12 +207,12 @@ export default class SceneryPlugin extends Plugin {
   }
 
   reloadWallpaper() {
-    if (this.settings.enabled) this.renderer.reload(this.activeItem);
+    if (this.settings.enabled) this.all((r) => r.reload(this.activeItem));
   }
 
   /** Called by the settings tab after the user changed a package's values. */
   packageChanged(item: WallpaperItem, manifest: PackageManifest) {
-    this.renderer.updatePackage(item, manifest);
+    this.all((r) => r.updatePackage(item, manifest));
     this.saveSoon();
   }
 
@@ -241,7 +261,7 @@ export default class SceneryPlugin extends Plugin {
 
   /** Called by the editor after it mutated a scene in place. */
   sceneChanged() {
-    if (this.settings.enabled) this.renderer.show(this.activeItem);
+    if (this.settings.enabled) this.all((r) => r.show(this.activeItem));
     this.saveSoon();
   }
 
@@ -279,12 +299,17 @@ export default class SceneryPlugin extends Plugin {
   }
 
   applyStyle() {
-    this.renderer.applyStyle();
+    this.all((r) => r.applyStyle());
   }
 
   private updatePaused() {
-    const background = document.hidden || !document.hasFocus();
-    this.renderer.setPaused(this.userPaused || (this.settings.pauseOnBlur && background));
+    // "In the background" means no Obsidian window is both visible and focused.
+    const background = [...this.renderers.keys()].every((win) => win.document.hidden || !win.document.hasFocus());
+    this.setPaused(this.userPaused || (this.settings.pauseOnBlur && background));
+  }
+
+  setPaused(paused: boolean) {
+    this.all((r) => r.setPaused(paused));
   }
 
   private restartSlideshow() {

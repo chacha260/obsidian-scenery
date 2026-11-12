@@ -144,6 +144,9 @@ const en = {
   "cmd.exportScene": "Export scene to a folder",
   "scene.exported": "Scenery: scene exported to “{path}”",
   "scene.exportFailed": "Scenery: could not export the scene:",
+  "set.rename": "Rename",
+  "set.popouts": "Show in pop-out windows",
+  "set.popouts.desc": "Also show the wallpaper in windows opened with “Move to new window”.",
 };
 
 type Key = keyof typeof en;
@@ -294,6 +297,9 @@ const ja: Record<Key, string> = {
   "cmd.exportScene": "シーンをフォルダに書き出す",
   "scene.exported": "Scenery: シーンを「{path}」に書き出しました",
   "scene.exportFailed": "Scenery: シーンを書き出せませんでした:",
+  "set.rename": "名前を変更",
+  "set.popouts": "ポップアウトウィンドウにも表示",
+  "set.popouts.desc": "「新しいウィンドウに移動」で開いたウィンドウにも壁紙を表示します。",
 };
 
 const lang = window.localStorage.getItem("language") ?? "en";

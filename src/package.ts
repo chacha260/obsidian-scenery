@@ -52,11 +52,11 @@ export interface PackageState {
 export function makeState(
   manifest: PackageManifest,
   values: Record<string, unknown> | undefined,
-  env: { paused: boolean; pointer: { x: number; y: number }; note: NoteInfo | null; fps: number }
+  env: { doc: Document; paused: boolean; pointer: { x: number; y: number }; note: NoteInfo | null; fps: number }
 ): PackageState {
   return {
     props: resolveValues(manifest, values),
-    theme: readTheme(),
+    theme: readTheme(env.doc),
     note: env.note,
     paused: env.paused,
     pointer: env.pointer,
@@ -186,12 +186,12 @@ const THEME_VARS = {
 } as const;
 
 /** Theme colours as concrete rgb() strings a canvas can use. */
-export function readTheme(): Record<string, string | boolean> {
-  const probe = document.body.createDiv();
-  const theme: Record<string, string | boolean> = { dark: document.body.classList.contains("theme-dark") };
+export function readTheme(doc: Document): Record<string, string | boolean> {
+  const probe = doc.body.createDiv();
+  const theme: Record<string, string | boolean> = { dark: doc.body.classList.contains("theme-dark") };
   for (const [key, cssVar] of Object.entries(THEME_VARS)) {
     probe.style.color = `var(${cssVar})`;
-    theme[key] = getComputedStyle(probe).color;
+    theme[key] = (doc.defaultView ?? window).getComputedStyle(probe).color;
   }
   probe.remove();
   return theme;

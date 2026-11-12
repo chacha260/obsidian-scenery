@@ -1,22 +1,24 @@
-# 壁紙パッケージの作り方
+# Writing a wallpaper package
 
-HTML / CSS / JavaScript で Scenery 用の壁紙を作るためのガイドです。コードを書かずに作りたい場合は、README の「シーン」を参照してください。
+A package is a wallpaper written in HTML, CSS and JavaScript. If you would rather not write code, see *Scenes* in the README.
 
-## はじめかた
+[日本語版はこちら](authoring.ja.md)
 
-1. コマンド「Scenery: 壁紙パッケージを作成」を実行し、名前を入力します。
-2. Vault の `Scenery/<名前>/` に、動くひな形（`scenery.json` と `index.html`）が作られ、そのまま壁紙として表示されます。
-3. 好きなエディタで 2 つのファイルを編集します。**保存すると壁紙が自動で再読み込みされます。**
+## Getting started
 
-既存のフォルダを壁紙にするには、設定 → ライブラリ →「Vault のフォルダ」で `scenery.json` のあるフォルダを選びます。
+1. Run the command **Scenery: Create wallpaper package** and type a name.
+2. A working example (`scenery.json` and `index.html`) is created in `Scenery/<name>/` and shown as your wallpaper.
+3. Edit the two files in any editor. **Saving reloads the wallpaper.**
 
-## フォルダ構成
+To use an existing folder, choose it with **Settings → Scenery → Vault folder**. It must contain `scenery.json`.
+
+## Folder layout
 
 ```
 Scenery/my-wallpaper/
-├── scenery.json   マニフェスト（必須）
-├── index.html     最初に読み込まれるページ
-└── …              画像・スクリプト・CSS など。index.html から相対パスで参照できます
+├── scenery.json   manifest (required)
+├── index.html     the page that is loaded
+└── …              images, scripts, CSS; reference them with relative paths
 ```
 
 ## scenery.json
@@ -26,97 +28,97 @@ Scenery/my-wallpaper/
   "name": "My wallpaper",
   "author": "you",
   "version": "1.0.0",
-  "description": "一覧に表示される説明",
+  "description": "Shown in the settings",
   "entry": "index.html",
   "permissions": [],
   "properties": {
-    "count": { "type": "slider", "label": "粒の数", "min": 5, "max": 200, "step": 5, "default": 60 },
-    "color": { "type": "color", "label": "色", "default": "#7fd4ff" },
-    "trails": { "type": "toggle", "label": "残像", "default": true },
-    "shape": { "type": "select", "label": "形", "options": { "glow": "光の玉", "ring": "輪" }, "default": "glow" },
-    "message": { "type": "text", "label": "メッセージ", "default": "" }
+    "count": { "type": "slider", "label": "Number of orbs", "min": 5, "max": 200, "step": 5, "default": 60 },
+    "color": { "type": "color", "label": "Colour", "default": "#7fd4ff" },
+    "trails": { "type": "toggle", "label": "Trails", "default": true },
+    "shape": { "type": "select", "label": "Shape", "options": { "glow": "Glow", "ring": "Ring" }, "default": "glow" },
+    "message": { "type": "text", "label": "Message", "default": "" }
   }
 }
 ```
 
-すべての項目は省略できます。`entry` の既定値は `index.html` です。
+Every field is optional. `entry` defaults to `index.html`.
 
-### properties（ユーザー設定項目）
+### properties
 
-ここに書いた項目は、Scenery の設定画面に「〈壁紙名〉の設定」として自動で表示されます。ユーザーが変えた値は壁紙ごとに保存されます。
+Each property becomes a control under “Settings for ‹wallpaper›” in the Scenery settings. The values a user picks are saved per wallpaper.
 
-| type | 壁紙に届く値 | 追加で指定できるもの |
+| type | Value your page receives | Extra fields |
 | --- | --- | --- |
-| `slider` | 数値 | `min`（既定 0）、`max`（既定 100）、`step`（既定 1） |
-| `color` | `"#rrggbb"` の文字列 | |
-| `toggle` | `true` / `false` | |
-| `select` | 選ばれた値の文字列 | `options`: 値の配列、または「値: 表示名」のオブジェクト |
-| `text` | 文字列 | |
+| `slider` | number | `min` (default 0), `max` (default 100), `step` (default 1) |
+| `color` | string, `"#rrggbb"` | |
+| `toggle` | `true` or `false` | |
+| `select` | string, the chosen value | `options`: a list of values, or an object mapping value to label |
+| `text` | string | |
 
-どの type でも `label`（表示名）、`description`（説明）、`default`（既定値）を指定できます。範囲外の数値や、選択肢にない値は、壁紙に届く前に補正されます。
+All types accept `label`, `description` and `default`. Numbers outside the range and values that are not among the options are corrected before they reach your page.
 
 ### permissions
 
-| 値 | 意味 |
+| Value | Meaning |
 | --- | --- |
-| `"note"` | 開いているノートの名前とパスを受け取りたい |
+| `"note"` | The wallpaper wants the name and path of the open note |
 
-`"note"` を書くと設定画面に許可のトグルが出ます。ユーザーが許可するまで `scenery.note` は `null` です。
+Listing `"note"` adds a toggle to the wallpaper's settings. Until the user turns it on, `scenery.note` is `null`.
 
 ## API: `window.scenery`
 
-Scenery は、ページのスクリプトより先に `scenery` オブジェクトを用意します。読み込むファイルや `<script>` タグの追加は不要です。
+Scenery defines `scenery` before your scripts run. There is nothing to include.
 
 ### `scenery.on(key, fn)`
 
-`fn` を**その場で 1 回**、現在の値で呼び、以後は値が変わるたびに呼びます。戻り値の関数を呼ぶと購読を解除できます。
+Calls `fn` **once immediately** with the current value, then again whenever the value changes. Returns a function that removes the listener.
 
 ```js
 scenery.on("props", function (props) {
-  // 初回と、ユーザーが設定を変えるたびに呼ばれる
+  // runs now, and every time the user changes a setting
 });
 ```
 
-| key | 値 | 変わるタイミング |
+| key | Value | Changes when |
 | --- | --- | --- |
-| `"props"` | `scenery.json` の `properties` に対応する値のオブジェクト | ユーザーが設定を変えたとき |
-| `"theme"` | 下記のテーマ情報 | テーマやライト/ダークが変わったとき |
-| `"pointer"` | `{ x, y }`。ウィンドウ内のポインタ位置（0〜1） | ポインタが動いたとき |
-| `"paused"` | `true` / `false` | Obsidian が背面になったとき、ユーザーが一時停止したとき |
-| `"note"` | `{ name, path }` または `null` | 開いているノートが変わったとき |
+| `"props"` | Object with one entry per property in `scenery.json` | The user changes a setting |
+| `"theme"` | Theme information, see below | The theme or light/dark mode changes |
+| `"pointer"` | `{ x, y }`, pointer position in the window, 0 to 1 | The pointer moves |
+| `"paused"` | `true` or `false` | Obsidian goes to the background, or the user pauses |
+| `"note"` | `{ name, path }` or `null` | Another note is opened |
 
-同じ値は `scenery.props`、`scenery.theme`、`scenery.pointer`、`scenery.paused`、`scenery.note` でいつでも読めます。
+The same values can be read at any time from `scenery.props`, `scenery.theme`, `scenery.pointer`, `scenery.paused` and `scenery.note`.
 
-### テーマ情報
+### Theme information
 
 ```js
 {
-  dark: true,                      // ダークテーマなら true
-  accent: "rgb(138, 92, 245)",     // アクセントカラー
-  background: "rgb(30, 30, 30)",   // 主な背景色
-  backgroundAlt: "rgb(38, 38, 38)",// サイドバーなどの背景色
-  text: "rgb(218, 218, 218)",      // 本文の文字色
-  textMuted: "rgb(153, 153, 153)"  // 控えめな文字色
+  dark: true,                       // true for dark themes
+  accent: "rgb(138, 92, 245)",      // accent colour
+  background: "rgb(30, 30, 30)",    // main background
+  backgroundAlt: "rgb(38, 38, 38)", // sidebars and similar
+  text: "rgb(218, 218, 218)",       // body text
+  textMuted: "rgb(153, 153, 153)"   // secondary text
 }
 ```
 
-色は `rgb()` 形式なので、CSS にも canvas にもそのまま使えます。
+Colours are `rgb()` strings and work in CSS and on a canvas.
 
-## 知っておくこと
+## Things to know
 
-- **一時停止は自動です。** 一時停止中、Scenery は `requestAnimationFrame` のコールバックを保留し、再開時に流します。`requestAnimationFrame` で描画していれば、何もしなくても背面で止まります。`setInterval` や CSS アニメーション、動画は止まらないので、必要なら `"paused"` を購読してください。
-- **壁紙はクリックやキー入力を受け取りません。** ワークスペースの背後にあるためです。ポインタ位置は `"pointer"` で受け取れます。
-- **壁紙は隔離された枠（sandbox 付き iframe）で動きます。** Vault のファイルや Obsidian 本体には触れません。`localStorage` と `sessionStorage` は呼べますが、中身は再読み込みで消える一時的なものです。cookie は使えません。保存したい値は `properties` にしてください。
-- **`fetch()` でパッケージ内のファイルは読めません。** ES モジュール（`<script type="module">`）も同じ理由で動かないことがあります。画像、通常の `<script src>`、`<link rel="stylesheet">` は相対パスで読み込めます。データは `.js` ファイルに書いて `<script>` で読み込むのが確実です。
-- **読みやすさの暗幕が上に重なります。** 壁紙の上にはテーマの背景色が半透明で載ります（濃さはユーザー設定）。コントラストの強い絵柄でも文字は読めますが、淡い表現は見えにくくなります。
+- **Pausing is automatic.** While paused, Scenery holds `requestAnimationFrame` callbacks and releases them on resume. If you draw with `requestAnimationFrame`, you stop in the background without doing anything. `setInterval`, CSS animations and videos keep running; listen to `"paused"` if that matters.
+- **Your page never receives clicks or key presses.** It sits behind the workspace. Use `"pointer"` for the pointer position.
+- **Your page runs in a sandboxed frame.** It cannot touch the vault or the app. `localStorage` and `sessionStorage` can be called, but they are temporary and empty after a reload. Cookies are not available. Anything worth keeping should be a property.
+- **`fetch()` cannot read files in the package**, and ES modules (`<script type="module">`) may fail for the same reason. Images, ordinary `<script src>` and `<link rel="stylesheet">` load fine with relative paths. Put data in a `.js` file and load it with `<script>`.
+- **Readability dimming sits on top.** The theme's background colour is laid over the wallpaper at a strength the user chooses. Subtle visuals can get lost.
 
-## シーンのレイヤーとして使う
+## Using a package as a scene layer
 
-パッケージは、シーンエディタの「レイヤーを追加 → パッケージ」で他のレイヤーと重ねられます。`properties` はレイヤーの設定欄に表示されます。
+A package can be stacked with other layers in the scene editor: **Add layer → Package**. Its properties appear in the layer's settings.
 
-- **重ねる前提なら、ページに背景を付けないでください。** `body` に背景色がなければ、下のレイヤーが透けて見えます。
-- レイヤーとして使われているときは、`scenery.note` は常に `null` です。
+- **Leave the page background unset if it is meant for layering.** Without a background on `body`, the layers below show through.
+- As a layer, a package always sees `scenery.note` as `null`.
 
-## 配布
+## Sharing
 
-パッケージはただのフォルダです。zip にして渡し、受け取った人が Vault に展開して「Vault のフォルダ」から追加すれば使えます。
+A package is just a folder. Zip it and send it; the recipient unpacks it into a vault and adds it with **Vault folder**.

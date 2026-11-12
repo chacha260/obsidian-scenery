@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, TFile, TFolder } from "obsidian";
+import { App, FuzzySuggestModal, Modal, Setting, TFile, TFolder } from "obsidian";
 import { MANIFEST_FILE, WE_MANIFEST_FILE } from "./package";
 import { detectType, WallpaperType } from "./types";
 
@@ -52,5 +52,36 @@ export class PackagePicker extends FuzzySuggestModal<TFolder> {
   }
   onChooseItem(folder: TFolder) {
     this.onPick(folder);
+  }
+}
+
+/** Ask for a single line of text. */
+export class NameModal extends Modal {
+  constructor(app: App, private heading: string, private value: string, private cta: string, private onSubmit: (name: string) => void) {
+    super(app);
+  }
+  onOpen() {
+    this.setTitle(this.heading);
+    const submit = () => {
+      const name = this.value.trim();
+      if (!name) return;
+      this.close();
+      this.onSubmit(name);
+    };
+    new Setting(this.contentEl).addText((text) => {
+      text.setValue(this.value).onChange((v) => (this.value = v));
+      text.inputEl.addClass("scenery-wide-input");
+      text.inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.isComposing) submit();
+      });
+      window.setTimeout(() => {
+        text.inputEl.focus();
+        text.inputEl.select();
+      });
+    });
+    new Setting(this.contentEl).addButton((b) => b.setButtonText(this.cta).setCta().onClick(submit));
+  }
+  onClose() {
+    this.contentEl.empty();
   }
 }

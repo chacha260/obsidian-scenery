@@ -28,11 +28,17 @@ export class Renderer {
 
   private pointer = { x: 0.5, y: 0.5 };
 
+  private doc: Document;
+
+  /** One renderer per window: the main window and, optionally, each pop-out. */
   constructor(
     private app: App,
+    private win: Window,
     private getSettings: () => ScenerySettings,
     private getNote: () => NoteInfo | null
-  ) {}
+  ) {
+    this.doc = win.document;
+  }
 
   private noteFor(item: WallpaperItem, manifest: PackageManifest): NoteInfo | null {
     return item.allowNote && manifest.permissions?.includes("note") ? this.getNote() : null;
@@ -65,6 +71,7 @@ export class Renderer {
   private showPackage(item: WallpaperItem, layer: Layer, reveal: () => void, fail: () => void) {
     const frame = new PackageFrame(this.app, layer.el, item.source, (manifest) =>
       makeState(manifest, item.values, {
+        doc: this.doc,
         paused: this.paused,
         pointer: this.pointer,
         note: this.noteFor(item, manifest),
@@ -80,12 +87,12 @@ export class Renderer {
 
   mount() {
     if (this.root) return;
-    this.root = createDiv({ cls: "scenery-root" });
+    this.root = this.doc.body.createDiv({ cls: "scenery-root" });
     this.stage = this.root.createDiv({ cls: "scenery-stage" });
     this.root.createDiv({ cls: "scenery-dim" });
     this.root.classList.toggle("is-paused", this.paused);
-    document.body.prepend(this.root);
-    document.body.classList.add("scenery-active");
+    this.doc.body.prepend(this.root);
+    this.doc.body.classList.add("scenery-active");
   }
 
   unmount() {
@@ -95,7 +102,8 @@ export class Renderer {
     this.currentKey = "";
     this.root?.remove();
     this.root = this.stage = null;
-    document.body.classList.remove("scenery-active");
+    this.doc.body.classList.remove("scenery-active");
+    this.doc.body.style.removeProperty("--scenery-panel");
   }
 
   /** Push appearance and playback settings to the DOM. Cheap; safe to call often. */
@@ -109,7 +117,7 @@ export class Renderer {
     style.setProperty("--scenery-saturation", String(s.saturation / 100));
     style.setProperty("--scenery-fit", s.fit);
     style.setProperty("--scenery-bleed", `${s.parallax + s.blur * 2}px`);
-    document.body.style.setProperty("--scenery-panel", `${s.panelTint}%`);
+    this.doc.body.style.setProperty("--scenery-panel", `${s.panelTint}%`);
     this.applyPointer();
     const layer = this.current;
     if (layer?.video) this.configureVideo(layer.video);
@@ -240,7 +248,7 @@ export class Renderer {
   themeChanged() {
     this.current?.effect?.refreshPalette();
     this.current?.scene?.themeChanged();
-    this.post("theme", readTheme());
+    this.post("theme", readTheme(this.doc));
   }
 
   private applyPointer() {
@@ -252,8 +260,8 @@ export class Renderer {
   /** x and y are pointer positions in the 0..1 range. */
   setPointer(x: number, y: number) {
     this.pointer = { x, y };
-    cancelAnimationFrame(this.pointerFrame);
-    this.pointerFrame = requestAnimationFrame(() => {
+    this.win.cancelAnimationFrame(this.pointerFrame);
+    this.pointerFrame = this.win.requestAnimationFrame(() => {
       this.applyPointer();
       this.post("pointer", this.pointer);
       this.current?.scene?.setPointer(this.pointer);

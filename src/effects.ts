@@ -13,10 +13,10 @@ interface Palette {
 }
 
 /** Resolve a theme CSS variable to concrete RGB via a throwaway element. */
-function resolveColor(color: string, fallback: RGB): RGB {
-  const probe = document.body.createDiv();
+function resolveColor(doc: Document, color: string, fallback: RGB): RGB {
+  const probe = doc.body.createDiv();
   probe.style.color = color;
-  const m = getComputedStyle(probe).color.match(/[\d.]+/g);
+  const m = (doc.defaultView ?? window).getComputedStyle(probe).color.match(/[\d.]+/g);
   probe.remove();
   return m && m.length >= 3 ? [Number(m[0]), Number(m[1]), Number(m[2])] : fallback;
 }
@@ -27,11 +27,11 @@ export interface EffectOptions {
   tint?: string | null;
 }
 
-function readPalette(o: EffectOptions): Palette {
-  const dark = document.body.classList.contains("theme-dark");
-  const accent = resolveColor(o.tint || "var(--interactive-accent)", [138, 92, 245]);
+function readPalette(doc: Document, o: EffectOptions): Palette {
+  const dark = doc.body.classList.contains("theme-dark");
+  const accent = resolveColor(doc, o.tint || "var(--interactive-accent)", [138, 92, 245]);
   return {
-    bg: resolveColor("var(--background-primary)", [30, 30, 30]),
+    bg: resolveColor(doc, "var(--background-primary)", [30, 30, 30]),
     accent,
     fg: o.tint ? accent : dark ? [255, 255, 255] : accent,
     dark,
@@ -272,6 +272,9 @@ export class EffectPlayer {
   private ctx: CanvasRenderingContext2D;
   private draw: Draw;
   private palette: Palette;
+  /** The window the canvas lives in: pop-out windows keep their own clock and frame loop. */
+  private win: Window & typeof globalThis;
+  private doc: Document;
   private raf = 0;
   private last = 0;
   private time = 0;
@@ -280,17 +283,19 @@ export class EffectPlayer {
   fps = 30;
 
   constructor(parent: HTMLElement, id: string, private options: EffectOptions = {}) {
-    this.palette = readPalette(options);
+    this.doc = parent.ownerDocument;
+    this.win = (this.doc.defaultView ?? window) as Window & typeof globalThis;
+    this.palette = readPalette(this.doc, options);
     this.canvas = parent.createEl("canvas", { cls: "scenery-media" });
     this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;
     this.draw = (FACTORIES[id as EffectId] ?? aurora)();
-    this.observer = new ResizeObserver(() => this.resize());
+    this.observer = new this.win.ResizeObserver(() => this.resize());
     this.observer.observe(this.canvas);
     this.resize();
   }
 
   private resize() {
-    const scale = Math.min(window.devicePixelRatio || 1, 1.5);
+    const scale = Math.min(this.win.devicePixelRatio || 1, 1.5);
     const w = Math.max(1, Math.round(this.canvas.clientWidth * scale));
     const h = Math.max(1, Math.round(this.canvas.clientHeight * scale));
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -302,7 +307,7 @@ export class EffectPlayer {
 
   /** Re-read theme colours (call when the theme changes). */
   refreshPalette() {
-    this.palette = readPalette(this.options);
+    this.palette = readPalette(this.doc, this.options);
     this.render(0);
   }
 
@@ -319,7 +324,7 @@ export class EffectPlayer {
 
   private tick = (now: number) => {
     if (!this.running) return;
-    this.raf = requestAnimationFrame(this.tick);
+    this.raf = this.win.requestAnimationFrame(this.tick);
     const elapsed = now - this.last;
     if (elapsed < 1000 / this.fps - 2) return;
     this.last = now;
@@ -329,13 +334,13 @@ export class EffectPlayer {
   start() {
     if (this.running) return;
     this.running = true;
-    this.last = performance.now();
-    this.raf = requestAnimationFrame(this.tick);
+    this.last = this.win.performance.now();
+    this.raf = this.win.requestAnimationFrame(this.tick);
   }
 
   stop() {
     this.running = false;
-    cancelAnimationFrame(this.raf);
+    this.win.cancelAnimationFrame(this.raf);
   }
 
   destroy() {

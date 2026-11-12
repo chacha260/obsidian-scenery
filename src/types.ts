@@ -107,6 +107,8 @@ export interface ScenerySettings {
   shuffle: boolean;
   /** Vault folder where new wallpaper packages are created. */
   packageFolder: string;
+  /** Also show the wallpaper in pop-out windows. */
+  popouts: boolean;
 }
 
 export const EFFECT_IDS = ["aurora", "starfield", "particles", "snow", "fireflies", "rain"] as const;
@@ -136,6 +138,7 @@ export const DEFAULT_SETTINGS: ScenerySettings = {
   intervalMinutes: 10,
   shuffle: false,
   packageFolder: "Scenery",
+  popouts: true,
 };
 
 export const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg"];

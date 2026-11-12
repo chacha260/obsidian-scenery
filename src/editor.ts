@@ -1,4 +1,5 @@
 import { ItemView, Menu, Setting, WorkspaceLeaf, setIcon } from "obsidian";
+import { moveItem, reorderable } from "./dnd";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
 import { loadManifest } from "./package";
@@ -181,6 +182,10 @@ export class SceneEditorView extends ItemView {
       });
       button("trash-2", t("set.remove"), false, () => {
         layers.splice(i, 1);
+        this.changed(true);
+      });
+      reorderable(row, `scenery-layers-${scene.id}`, i, (from, to) => {
+        moveItem(layers, from, to);
         this.changed(true);
       });
       row.addEventListener("click", () => {
