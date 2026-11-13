@@ -189,6 +189,13 @@ const en = {
   "set.theme.dark": "When the theme is dark",
   "set.theme.none": "Do not switch",
   "set.theme.desc": "Switches to this wallpaper when the theme changes to this mode.",
+  "set.shared": "Shared by all wallpapers",
+  "set.appearance.desc": "Dimming, blur, colours, fit and parallax.",
+  "set.appearance.reset.desc": "A wallpaper's own appearance goes back to the shared one; the shared one goes back to the defaults.",
+  "set.playback.desc": "Video volume and speed, frame rate, pausing, pop-out windows.",
+  "set.switching": "Automatic switching",
+  "set.switching.desc": "Slideshow, and a wallpaper for each theme.",
+  "set.switching.on": "Slideshow every {n} min",
 };
 
 type Key = keyof typeof en;
@@ -382,6 +389,13 @@ const ja: Record<Key, string> = {
   "set.theme.dark": "ダークテーマのとき",
   "set.theme.none": "切り替えない",
   "set.theme.desc": "テーマがこのモードに変わったとき、この壁紙に切り替えます。",
+  "set.shared": "全壁紙で共通",
+  "set.appearance.desc": "暗幕、ぼかし、色合い、フィット、視差。",
+  "set.appearance.reset.desc": "壁紙専用の見た目は共通の設定に、共通の設定は初期値に戻ります。",
+  "set.playback.desc": "動画の音量と速度、フレームレート、一時停止、ポップアウトウィンドウ。",
+  "set.switching": "自動切り替え",
+  "set.switching.desc": "スライドショーと、テーマごとの壁紙。",
+  "set.switching.on": "{n} 分ごとにスライドショー",
 };
 
 const dict: Record<Key, string> = getLanguage().startsWith("ja") ? ja : en;

@@ -92,6 +92,17 @@ export class PluginSettingTab {
     this.refreshers.push(() => { el.hidden = !(typeof def.visible === "function" ? def.visible() : def.visible); });
   }
   renderItem(parent, def, list, index) {
+    if (def.type === "page") {
+      // The real app opens a page on its own screen; here it is laid out in place.
+      const el = mk("div", { cls: "setting-page" }, parent);
+      const entry = new Setting(el).setName(def.name);
+      if (def.desc) entry.setDesc(def.desc);
+      const value = mk("span", { cls: "setting-page-value" }, entry.controlEl);
+      if (def.displayValue !== undefined) this.refreshers.push(() => { value.textContent = typeof def.displayValue === "function" ? def.displayValue() : def.displayValue; });
+      (def.items || []).forEach((item, i) => this.renderItem(el, item, null, i));
+      this.watchVisible(el, def);
+      return el;
+    }
     if (def.type === "group" || def.type === "list") {
       const el = mk("div", { cls: "setting-group " + (def.cls || "") }, parent);
       const head = new Setting(el).setName(def.heading || "").setHeading();
@@ -115,7 +126,14 @@ export class PluginSettingTab {
     const setting = new Setting(parent).setName(def.name);
     if (def.desc) setting.setDesc(def.desc);
     if (def.control) this.renderControl(setting, def.control);
-    else if (def.render) { const cleanup = def.render(setting, { listEl: parent }); if (cleanup) this.cleanups.push(cleanup); }
+    else if (def.render) {
+      // Obsidian may draw into a row it already has: do that here too, so leftovers show up in tests.
+      const first = def.render(setting, { listEl: parent });
+      if (first) first();
+      setting.controlEl.replaceChildren();
+      const cleanup = def.render(setting, { listEl: parent });
+      if (cleanup) this.cleanups.push(cleanup);
+    }
     else if (def.action) setting.settingEl.addEventListener("click", () => def.action(setting.settingEl, index));
     if (list && list.onDelete) setting.addExtraButton((b) => b.setIcon("trash-2").onClick(() => list.onDelete(index)));
     this.watchVisible(setting.settingEl, def);

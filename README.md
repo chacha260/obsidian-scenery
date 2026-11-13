@@ -31,7 +31,7 @@ Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper E
 
 ## Getting started
 
-Enable the plugin and the Aurora effect appears. Open **Settings → Scenery**. The **+** button at the top of the library adds wallpapers (a vault file, a vault folder, a URL or path) and creates scenes and packages; **Use** on a row switches to it. If text becomes hard to read, raise **Readability dimming**.
+Enable the plugin and the Aurora effect appears. Open **Settings → Scenery**. The **+** button at the top of the library adds wallpapers (a vault file, a vault folder, a URL or path) and creates scenes and packages; **Use** on a row switches to it. Appearance, playback and automatic switching each have their own page below the library. If text becomes hard to read, raise **Readability dimming**.
 
 ## Scenes: compose a wallpaper without code
 

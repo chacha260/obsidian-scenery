@@ -238,12 +238,15 @@ await ownToggle.check(); await wait(200);
 check("turning on a wallpaper's own appearance changes nothing by itself", (await dimVar()) === sharedDim && (await run(() => !!plugin.activeItem.look)));
 const dimSlider = page.locator("#panel .setting-item").filter({ hasText: "Readability dimming" }).locator("input[type=range]");
 await dimSlider.evaluate((el) => { el.value = 10; el.dispatchEvent(new Event("input")); el.dispatchEvent(new Event("change")); }); await wait(200);
+const lookSummary = () => page.locator("#panel .setting-page").filter({ hasText: "Readability dimming" }).locator(".setting-page-value").textContent();
+check("the appearance page's entry says the wallpaper has its own look", (await lookSummary()) === "own appearance");
 check("its sliders change that wallpaper only", (await dimVar()) === "0.1" && (await run(() => plugin.settings.dim)) === 25 && (await run(() => plugin.activeItem.look.dim)) === 10);
 await run(() => plugin.setActive("effect-rain")); await wait(100);
 check("other wallpapers keep the shared appearance", (await dimVar()) === sharedDim);
 await run(() => plugin.setActive("effect-snow")); await wait(100);
 check("coming back restores the wallpaper's own appearance", (await dimVar()) === "0.1");
 await openSettings(); await ownToggle.uncheck(); await wait(200);
+check("and says so again once it is shared", (await lookSummary()) === "Shared by all wallpapers");
 check("turning it off returns to the shared appearance", (await dimVar()) === sharedDim && (await run(() => plugin.activeItem.look === undefined)));
 await shot("library");
 

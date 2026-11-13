@@ -84,7 +84,7 @@ const ALLOW_NOTE = "allow-note";
 /**
  * The settings tab, described declaratively so every setting shows up in Obsidian's
  * settings search. The library is a list whose rows are drawn by hand (thumbnail,
- * buttons); everything else is plain controls. Appearance controls edit either the
+ * buttons); the rest is plain controls on sub-pages, which keeps the first screen short. Appearance controls edit either the
  * shared look or the current wallpaper's own, and a package's declared properties
  * are turned into controls of their own.
  */
@@ -180,20 +180,10 @@ export class ScenerySettingTab extends PluginSettingTab {
       },
       ...(active?.type === "package" ? this.packageGroup(active) : []),
       {
-        type: "group",
-        heading: active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance"),
-        extraButtons: [
-          (button) =>
-            button
-              .setIcon("rotate-ccw")
-              .setTooltip(t("pkg.reset"))
-              .onClick(() => {
-                // A wallpaper's own look goes back to the shared one; the shared one to the defaults.
-                if (active?.look) active.look = pickLook(s);
-                else Object.assign(s, pickLook(DEFAULT_SETTINGS));
-                void this.save().then(() => this.redraw());
-              }),
-        ],
+        type: "page",
+        name: t("set.appearance"),
+        desc: t("set.appearance.desc"),
+        displayValue: () => (plugin.activeItem?.look ? t("set.hasLook") : t("set.shared")),
         items: [
           { ...toggle(OWN_LOOK, t("set.ownLook"), t("set.ownLook.desc")), visible: () => !!plugin.activeItem },
           {
@@ -211,11 +201,23 @@ export class ScenerySettingTab extends PluginSettingTab {
           slider(`${LOOK}brightness`, t("set.brightness"), [20, 150, 1]),
           slider(`${LOOK}saturation`, t("set.saturation"), [0, 200, 1]),
           slider(`${LOOK}parallax`, t("set.parallax"), [0, 40, 1], t("set.parallax.desc")),
+          {
+            name: t("pkg.reset"),
+            desc: t("set.appearance.reset.desc"),
+            action: () => {
+              // A wallpaper's own look goes back to the shared one; the shared one to the defaults.
+              const current = plugin.activeItem;
+              if (current?.look) current.look = pickLook(s);
+              else Object.assign(s, pickLook(DEFAULT_SETTINGS));
+              void this.save().then(() => this.redraw());
+            },
+          },
         ],
       },
       {
-        type: "group",
-        heading: t("set.playback"),
+        type: "page",
+        name: t("set.playback"),
+        desc: t("set.playback.desc"),
         items: [
           slider("volume", t("set.volume"), [0, 100, 1], t("set.volume.desc")),
           slider("playbackRate", t("set.rate"), [0.25, 2, 0.05]),
@@ -225,24 +227,32 @@ export class ScenerySettingTab extends PluginSettingTab {
         ],
       },
       {
-        type: "group",
-        heading: t("set.slideshow"),
+        type: "page",
+        name: t("set.switching"),
+        desc: t("set.switching.desc"),
+        displayValue: () => (s.slideshow ? t("set.switching.on", { n: s.intervalMinutes }) : ""),
         items: [
-          toggle("slideshow", t("set.slideshow.enable")),
-          { ...slider("intervalMinutes", t("set.interval"), [1, 120, 1]), visible: () => s.slideshow },
-          { ...toggle("shuffle", t("set.shuffle")), visible: () => s.slideshow },
+          {
+            type: "group",
+            heading: t("set.slideshow"),
+            items: [
+              toggle("slideshow", t("set.slideshow.enable")),
+              { ...slider("intervalMinutes", t("set.interval"), [1, 120, 1]), visible: () => s.slideshow },
+              { ...toggle("shuffle", t("set.shuffle")), visible: () => s.slideshow },
+            ],
+          },
+          {
+            type: "group",
+            heading: t("set.theme"),
+            items: (["light", "dark"] as const).map(
+              (mode): SettingDefinition => ({
+                name: t(`set.theme.${mode}`),
+                desc: t("set.theme.desc"),
+                control: { type: "dropdown", key: `${THEME}${mode}`, options: wallpapers },
+              })
+            ),
+          },
         ],
-      },
-      {
-        type: "group",
-        heading: t("set.theme"),
-        items: (["light", "dark"] as const).map(
-          (mode): SettingDefinition => ({
-            name: t(`set.theme.${mode}`),
-            desc: t("set.theme.desc"),
-            control: { type: "dropdown", key: `${THEME}${mode}`, options: wallpapers },
-          })
-        ),
       },
     ];
   }
@@ -283,8 +293,10 @@ export class ScenerySettingTab extends PluginSettingTab {
     } else if (key.startsWith(THEME)) {
       s.themeWallpapers[key.slice(THEME.length) as "light" | "dark"] = String(value);
       await plugin.saveSettings();
+      const before = s.activeId;
       plugin.applyThemeWallpaper();
-      this.redraw();
+      // Only rebuild when the wallpaper actually changed: a rebuild may leave the page being edited.
+      if (s.activeId !== before) this.redraw();
     } else if (key === ALLOW_NOTE || key.startsWith(PACKAGE)) {
       const manifest = active && this.manifests.get(active.id);
       if (!active || !manifest || manifest instanceof Error) return;
@@ -352,8 +364,11 @@ export class ScenerySettingTab extends PluginSettingTab {
 
   /** A small still preview at the start of a library row. Returns what releases it. */
   private thumbnail(row: Setting, item: WallpaperItem): () => void {
+    // Obsidian redraws into the row it already has, so a preview from last time may still be here.
+    row.settingEl.querySelectorAll(":scope > .scenery-thumb").forEach((old) => old.remove());
     const el = row.settingEl.createDiv({ cls: "scenery-thumb" });
     row.settingEl.prepend(el);
+    let release = () => undefined as void;
     if (item.type === "image") {
       const img = el.createEl("img", { cls: "scenery-media" });
       img.loading = "lazy";
@@ -367,18 +382,21 @@ export class ScenerySettingTab extends PluginSettingTab {
     } else if (item.type === "effect") {
       // Never started: the player draws one frame and stays still.
       const player = new EffectPlayer(el, item.source);
-      return () => player.destroy();
+      release = () => player.destroy();
     } else if (item.type === "scene") {
       const scene = new SceneRuntime(this.app, el, () => this.plugin.settings);
       scene.setPaused(true);
       // Package layers would each start a live page; leave them out of a thumbnail.
       scene.sync((item.scene ?? []).filter((l) => l.kind !== "package"));
-      return () => scene.destroy();
+      release = () => scene.destroy();
     } else {
       el.addClass("is-icon");
       setIcon(el, item.type === "web" ? "globe" : "package");
     }
-    return () => undefined;
+    return () => {
+      release();
+      el.remove();
+    };
   }
 
   /** Everything that can be added to the library, offered from the list's + button. */
