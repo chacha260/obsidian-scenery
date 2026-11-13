@@ -94,7 +94,7 @@ export class Renderer {
     this.root.classList.toggle("is-paused", this.paused);
     this.root.classList.toggle("is-preview", this.preview);
     this.doc.body.prepend(this.root);
-    this.doc.body.classList.add("scenery-active");
+    this.doc.documentElement.classList.add("scenery-on");
   }
 
   unmount() {
@@ -104,7 +104,7 @@ export class Renderer {
     this.currentKey = "";
     this.root?.remove();
     this.root = this.stage = null;
-    this.doc.body.classList.remove("scenery-active");
+    this.doc.documentElement.classList.remove("scenery-on");
     this.doc.body.style.removeProperty("--scenery-panel");
   }
 

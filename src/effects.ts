@@ -267,13 +267,16 @@ function rain(): Draw {
 
 const FACTORIES: Record<EffectId, () => Draw> = { aurora, starfield, particles, snow, fireflies, rain };
 
+/** A window together with the one constructor we need from it. */
+type EffectWindow = Window & { ResizeObserver: typeof ResizeObserver };
+
 export class EffectPlayer {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private draw: Draw;
   private palette: Palette;
   /** The window the canvas lives in: pop-out windows keep their own clock and frame loop. */
-  private win: Window & typeof globalThis;
+  private win: EffectWindow;
   private doc: Document;
   private raf = 0;
   private last = 0;

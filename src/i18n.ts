@@ -1,3 +1,5 @@
+import { getLanguage } from "obsidian";
+
 const en = {
   "cmd.toggle": "Toggle wallpaper",
   "cmd.next": "Next wallpaper",
@@ -382,13 +384,7 @@ const ja: Record<Key, string> = {
   "set.theme.desc": "テーマがこのモードに変わったとき、この壁紙に切り替えます。",
 };
 
-const lang = window.localStorage.getItem("language") ?? "en";
-let dict: Record<Key, string> = lang.startsWith("ja") ? ja : en;
-
-/** Obsidian's own language setting is read above; the Studio web app picks from the browser instead. */
-export function setLanguage(language: string) {
-  dict = language.startsWith("ja") ? ja : en;
-}
+const dict: Record<Key, string> = getLanguage().startsWith("ja") ? ja : en;
 
 export function t(key: Key, vars?: Record<string, string | number>): string {
   let s = dict[key] ?? en[key];

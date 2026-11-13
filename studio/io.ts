@@ -36,7 +36,7 @@ export async function writeFolder(parent: DirHandle, name: string, files: Map<st
 }
 
 export function download(fileName: string, blob: Blob) {
-  const a = document.body.createEl("a");
+  const a = activeDocument.body.createEl("a");
   a.href = URL.createObjectURL(blob);
   a.download = fileName;
   a.click();
@@ -47,7 +47,7 @@ export function download(fileName: string, blob: Blob) {
 /** Let the user pick a folder to read. Paths in the result are relative to that folder. */
 export function openFolder(): Promise<{ name: string; files: Map<string, File> } | null> {
   return new Promise((resolve) => {
-    const input = document.body.createEl("input");
+    const input = activeDocument.body.createEl("input");
     input.type = "file";
     input.setAttribute("webkitdirectory", "");
     input.hidden = true;

@@ -45,6 +45,7 @@ export const Platform = { resourcePathPrefix: location.origin + "/", isDesktopAp
 export const normalizePath = (p) => p.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
 export const setIcon = (el, name) => { el.dataset.icon = name; };
 export const debounce = (fn) => fn;
+export const getLanguage = () => "en";
 
 export class Modal {
   constructor(app) { this.app = app; this.contentEl = mk("div"); window.__modal = this; }

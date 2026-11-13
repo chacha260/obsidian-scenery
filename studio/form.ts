@@ -70,9 +70,9 @@ export function button(parent: HTMLElement, label: string, onClick: (e: MouseEve
 
 let toastTimer = 0;
 export function toast(message: string) {
-  let el = document.querySelector<HTMLElement>("#toast");
+  let el = activeDocument.querySelector<HTMLElement>("#toast");
   if (!el) {
-    el = document.body.createDiv();
+    el = activeDocument.body.createDiv();
     el.id = "toast";
   }
   el.textContent = message;

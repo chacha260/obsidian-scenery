@@ -73,8 +73,10 @@ section("Basics");
 await wait(300);
 check("default effect is shown", await run(() => !!document.querySelector(".scenery-root canvas")));
 check("workspace is transparent while the wallpaper layer exists", (await run(() => getComputedStyle(document.querySelector(".app-container")).backgroundColor)) === "rgba(0, 0, 0, 0)");
-const noLayer = await run(() => { const r = document.querySelector(".scenery-root"); r.remove(); const c = getComputedStyle(document.querySelector(".app-container")).backgroundColor; document.body.prepend(r); return c; });
-check("windows without the layer keep their background (settings window fix)", noLayer === "rgb(30, 30, 30)", noLayer);
+// Obsidian copies <body> classes to its settings and pop-out windows. The switch must not live there,
+// or those windows would go transparent with nothing behind them (the black title bar bug).
+check("nothing is added to <body> that Obsidian would copy to other windows", await run(() => ![...document.body.classList].some((c) => c.startsWith("scenery"))));
+check("the stylesheet does not use :has()", !(await fs.readFile(path.join(root, "styles.css"), "utf8")).includes(":has("));
 
 await run(() => plugin.setActive(plugin.addItems(["media/photo.png"])[0])); await wait(1600);
 check("image wallpaper loads", (await run(() => document.querySelector(".scenery-layer.is-visible img")?.naturalWidth)) === 320);
@@ -87,7 +89,7 @@ check("a wallpaper that fails to load leaves the previous one up", (await visibl
 await run(() => { plugin.settings.parallax = 20; plugin.applyStyle(); }); await page.mouse.move(1050, 400); await wait(100);
 check("parallax follows the pointer", (await run(() => document.querySelector(".scenery-root").style.getPropertyValue("--scenery-px"))) === "-10px");
 await run(() => plugin.toggle());
-check("turning the wallpaper off cleans up", await run(() => !document.querySelector(".scenery-root") && !document.body.classList.contains("scenery-active")));
+check("turning the wallpaper off cleans up", await run(() => !document.querySelector(".scenery-root") && !document.documentElement.classList.contains("scenery-on")));
 await run(() => plugin.toggle());
 
 // ---------------------------------------------------------------------------
@@ -299,12 +301,12 @@ await wait(600);
 const popFrame = page.frames().find((f) => f.url().endsWith("/popout.html"));
 const sample = () => popFrame.evaluate(() => { const c = document.querySelector(".scenery-root canvas"); return c ? Array.from(c.getContext("2d").getImageData(0, 0, c.width, c.height).data).reduce((a, v, i) => (a + v * (i % 97)) % 1000003, 0) : null; });
 const s1 = await sample(); await wait(500); const s2 = await sample();
-check("a new window gets its own wallpaper layer", pop && s1 !== null && (await popFrame.evaluate(() => document.body.classList.contains("scenery-active") && getComputedStyle(document.querySelector(".app-container")).backgroundColor)) === "rgba(0, 0, 0, 0)");
+check("a new window gets its own wallpaper layer", pop && s1 !== null && (await popFrame.evaluate(() => document.documentElement.classList.contains("scenery-on") && getComputedStyle(document.querySelector(".app-container")).backgroundColor)) === "rgba(0, 0, 0, 0)");
 check("the effect animates on that window's own frame loop", s1 !== s2);
 await run(() => plugin.setActive("effect-aurora")); await wait(1600);
 check("switching wallpapers updates every window", (await popFrame.evaluate(() => document.querySelectorAll(".scenery-layer.is-visible").length)) === 1 && (await sample()) !== s2);
 await run(() => { plugin.settings.popouts = false; plugin.syncWindows(); plugin.refresh(); });
-check("turning the setting off removes the layer from pop-outs only", (await popFrame.evaluate(() => !document.querySelector(".scenery-root") && !document.body.classList.contains("scenery-active"))) && (await run(() => !!document.querySelector(".scenery-root"))));
+check("turning the setting off removes the layer from pop-outs only", (await popFrame.evaluate(() => !document.querySelector(".scenery-root") && !document.documentElement.classList.contains("scenery-on"))) && (await run(() => !!document.querySelector(".scenery-root"))));
 
 // ---------------------------------------------------------------------------
 section("Page errors");

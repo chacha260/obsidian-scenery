@@ -102,6 +102,8 @@ Everything stays in your browser: the Studio uploads nothing. Limits: in the Stu
 ## Privacy and security
 
 - Scenery makes no network requests and collects nothing.
+- It lists the files in your vault only to offer them in its pickers (images, videos, HTML pages and wallpaper folders), and reads the files of the wallpapers you add. It does not read your notes.
+- It keeps its settings in the plugin's own data file. The storage calls in its code belong to the sandboxed wallpaper page: a page that asks for `localStorage` gets a temporary in-memory stand-in, and nothing is saved.
 - Web-page wallpapers and packages run in a sandboxed frame (`sandbox="allow-scripts"`). They cannot read your vault, your notes or the app. They can, however, make network requests like any web page.
 - A package can ask to learn the name and path of the note you have open. It only receives them if you turn that on for that wallpaper; it is off by default.
 - Wallpapers are behind the workspace and never receive clicks or key presses.
@@ -109,7 +111,7 @@ Everything stays in your browser: the Studio uploads nothing. Limits: in the Stu
 ## Compatibility
 
 - Desktop only.
-- Requires Obsidian 1.7.2 or later.
+- Requires Obsidian 1.8.7 or later.
 - Tested with the default theme and with Minimal. Themes that force their own opaque backgrounds may leave some panels non-transparent.
 - The settings window is never made transparent.
 

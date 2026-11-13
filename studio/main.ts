@@ -1,5 +1,5 @@
 import "./obsidian-shim";
-import { setLanguage, t } from "../src/i18n";
+import { t } from "../src/i18n";
 import type { PackageManifest } from "../src/package";
 import { safeName } from "../src/sceneio";
 import * as form from "./form";
@@ -10,15 +10,14 @@ import { Stage } from "./stage";
 import { MemoryVault } from "./vault";
 import { zip } from "./zip";
 
-setLanguage(navigator.language || "en");
-document.documentElement.lang = navigator.language?.startsWith("ja") ? "ja" : "en";
+activeDocument.documentElement.lang = navigator.language?.startsWith("ja") ? "ja" : "en";
 
 const THEMES = {
   dark: { "--background-primary": "#1e1e1e", "--background-secondary": "#262626", "--text-normal": "#dadada", "--text-muted": "#9a9a9a", "--line": "#3a3a3a" },
   light: { "--background-primary": "#ffffff", "--background-secondary": "#f4f4f4", "--text-normal": "#222222", "--text-muted": "#6c6c6c", "--line": "#dcdcdc" },
 };
 
-const app = document.querySelector<HTMLElement>("#app") as HTMLElement;
+const app = activeDocument.querySelector<HTMLElement>("#app") as HTMLElement;
 const bar = app.createDiv({ cls: "bar" });
 const work = app.createDiv({ cls: "work" });
 const stageWrap = work.createDiv({ cls: "stage-wrap" });
@@ -37,17 +36,17 @@ let current: ModeName = "scene";
 let paused = false;
 
 function applyTheme(dark: boolean, accent: string) {
-  document.body.classList.toggle("theme-dark", dark);
-  document.body.classList.toggle("theme-light", !dark);
-  for (const [name, value] of Object.entries(THEMES[dark ? "dark" : "light"])) document.body.style.setProperty(name, value);
-  document.body.style.setProperty("--interactive-accent", accent);
+  activeDocument.body.classList.toggle("theme-dark", dark);
+  activeDocument.body.classList.toggle("theme-light", !dark);
+  for (const [name, value] of Object.entries(THEMES[dark ? "dark" : "light"])) activeDocument.body.style.setProperty(name, value);
+  activeDocument.body.style.setProperty("--interactive-accent", accent);
   modes[current].themeChanged();
 }
 
 function switchTo(name: ModeName) {
   modes[current].deactivate();
   current = name;
-  document.body.dataset.mode = name;
+  activeDocument.body.dataset.mode = name;
   for (const [key, tab] of Object.entries(modeTabs)) tab.toggleClass("is-active", key === name);
   modes[name].setPaused(paused);
   modes[name].activate();
@@ -97,7 +96,7 @@ async function save(pick: boolean) {
   }
 }
 
-form.button(files, t("studio.open"), async () => {
+async function openProject() {
   const picked = await openFolder();
   if (!picked) return;
   const manifestFile = picked.files.get("scenery.json");
@@ -115,27 +114,31 @@ form.button(files, t("studio.open"), async () => {
   switchTo(target);
   dirty = false;
   form.toast(t("studio.opened", { name: manifest.name || picked.name }));
-});
+}
+
+form.button(files, t("studio.open"), () => void openProject());
 form.button(files, t("studio.saveFolder"), () => void save(true));
 const saveButton = form.button(files, t("studio.save"), () => void save(false), "primary");
 saveButton.hidden = true;
-form.button(files, t("studio.zip"), async () => {
+async function downloadZip() {
   const name = safeName(modes[current].name) || "wallpaper";
   // The folder goes inside the archive so that unpacking gives one folder to drop into the vault.
   const entries = new Map([...modes[current].files()].map(([path, blob]) => [`${name}/${path}`, blob]));
   download(`${name}.zip`, await zip(entries));
   dirty = false;
-});
+}
+
+form.button(files, t("studio.zip"), () => void downloadZip());
 
 // ---- page-wide behaviour ----
-document.addEventListener("keydown", (e) => {
+activeDocument.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "s") {
     e.preventDefault();
     void save(false);
   }
 });
-document.addEventListener("dragover", (e) => e.preventDefault());
-document.addEventListener("drop", (e) => {
+activeDocument.addEventListener("dragover", (e) => e.preventDefault());
+activeDocument.addEventListener("drop", (e) => {
   e.preventDefault();
   const dropped = Array.from(e.dataTransfer?.files ?? []);
   if (!dropped.length) return;

@@ -94,7 +94,7 @@ export class SceneMode {
   }
 
   private pickFiles(kind: "image" | "video") {
-    const input = document.body.createEl("input");
+    const input = activeDocument.body.createEl("input");
     input.type = "file";
     input.accept = `${kind}/*`;
     input.multiple = true;

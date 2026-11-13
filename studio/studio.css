@@ -7,7 +7,6 @@
 html, body { margin: 0; height: 100%; }
 body { background: var(--background-secondary); color: var(--text-normal); }
 #app { display: flex; flex-direction: column; height: 100%; }
-[hidden] { display: none !important; }
 
 button, select, input[type="text"], textarea {
   font: inherit;
@@ -56,6 +55,7 @@ body[data-mode="package"] .panel { width: min(46%, 720px); display: flex; flex-d
 .stage-outline { position: absolute; inset: 0; z-index: 2; border: 1px dashed var(--interactive-accent); pointer-events: none; }
 
 /* ---- Obsidian mock-up ---- */
+.mock[hidden] { display: none; }
 .mock { position: absolute; inset: 0; z-index: 1; display: flex; font-size: clamp(8px, 1.5cqw, 15px); pointer-events: none; color: var(--text-normal); }
 .mock-ribbon { width: 4%; background: color-mix(in srgb, var(--background-secondary) 25%, transparent); }
 .mock-side { width: 20%; padding: 3% 2%; box-sizing: border-box; background: color-mix(in srgb, var(--background-secondary) 25%, transparent); color: var(--text-muted); line-height: 2; }

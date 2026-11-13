@@ -3,8 +3,14 @@
 
 type ElOptions = { cls?: string; text?: string };
 
+// Obsidian defines these globals; the shared code and the Studio use them the same way.
+const globals = window as unknown as { activeDocument: Document; activeWindow: Window };
+globals.activeDocument = window.document;
+globals.activeWindow = window;
+
 function make(tag: string, o: ElOptions = {}, parent?: Node): HTMLElement {
-  const el = (parent?.ownerDocument ?? document).createElement(tag);
+  // This is the Studio's stand-in for Obsidian's createEl itself, so it has to create the element directly.
+  const el = (parent?.ownerDocument ?? activeDocument).createElement(tag);
   if (o.cls) el.className = o.cls;
   if (o.text) el.textContent = o.text;
   parent?.appendChild(el);
@@ -26,4 +32,5 @@ export class TFile {
 }
 export class TFolder {}
 export const Platform = { resourcePathPrefix: "", isDesktopApp: false };
+export const getLanguage = () => navigator.language || "en";
 export const normalizePath = (p: string) => p.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/|\/$/g, "");

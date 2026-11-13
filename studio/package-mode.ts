@@ -47,7 +47,7 @@ export class PackageMode {
   }
 
   themeChanged() {
-    this.frame?.post("theme", readTheme(document));
+    this.frame?.post("theme", readTheme(activeDocument));
   }
 
   private noteFor(manifest: PackageManifest) {
@@ -72,7 +72,7 @@ export class PackageMode {
 
     const previous = this.frame;
     const frame = new PackageFrame(this.vault.app, this.stage.content, FOLDER, (m) =>
-      makeState(m, this.values, { doc: document, paused: this.paused, pointer: this.pointer, note: this.noteFor(m), fps: 30 })
+      makeState(m, this.values, { doc: activeDocument, paused: this.paused, pointer: this.pointer, note: this.noteFor(m), fps: 30 })
     );
     this.frame = frame;
     frame.loaded.then(
