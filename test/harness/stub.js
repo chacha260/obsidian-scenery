@@ -62,10 +62,75 @@ export class Menu {
     this.items.push(item);
     return this;
   }
+  addSeparator() { return this; }
   showAtMouseEvent() {}
+  showAtPosition() {}
 }
 export class ItemView { constructor(leaf) { this.leaf = leaf; this.contentEl = mk("div"); this.app = window.__app; } }
-export class PluginSettingTab { constructor(app) { this.app = app; this.containerEl = mk("div"); } }
+// A stand-in for Obsidian's declarative settings renderer (1.13+): groups, lists with
+// search / delete / add, controls bound to getControlValue / setControlValue, hand-drawn rows.
+export class PluginSettingTab {
+  constructor(app, plugin) {
+    this.app = app; this.plugin = plugin; this.containerEl = mk("div");
+    this.settingItems = []; this.cleanups = []; this.refreshers = []; this.queries = new Map();
+  }
+  getSettingDefinitions() { return []; }
+  getControlValue(key) { return this.plugin.settings[key]; }
+  setControlValue(key, value) { this.plugin.settings[key] = value; }
+  display() { this.update(); }
+  update() {
+    for (const cleanup of this.cleanups) cleanup();
+    this.cleanups = []; this.refreshers = [];
+    this.settingItems = this.getSettingDefinitions();
+    this.containerEl.replaceChildren();
+    this.settingItems.forEach((def) => this.renderItem(this.containerEl, def, null, 0));
+    this.refreshDomState();
+  }
+  refreshDomState() { for (const refresh of this.refreshers) refresh(); }
+  watchVisible(el, def) {
+    if (def.visible === undefined) return;
+    this.refreshers.push(() => { el.hidden = !(typeof def.visible === "function" ? def.visible() : def.visible); });
+  }
+  renderItem(parent, def, list, index) {
+    if (def.type === "group" || def.type === "list") {
+      const el = mk("div", { cls: "setting-group " + (def.cls || "") }, parent);
+      const head = new Setting(el).setName(def.heading || "").setHeading();
+      const body = mk("div", { cls: "setting-items" }, el);
+      const rows = (def.items || []).map((item, i) => ({ item, row: this.renderItem(body, item, def.type === "list" ? def : null, i) }));
+      if (def.type === "list" && !rows.length && def.emptyState) mk("p", { cls: "setting-empty", text: def.emptyState }, body);
+      if (def.search) {
+        const input = mk("input", {}, head.controlEl); input.type = "search"; input.placeholder = def.search.placeholder || "";
+        const key = def.heading || "";
+        const apply = () => {
+          this.queries.set(key, input.value);
+          for (const { item, row } of rows) row.classList.toggle("is-filtered", !!input.value && item.searchable !== false && !def.search.match(item, input.value));
+        };
+        input.value = this.queries.get(key) || ""; input.addEventListener("input", apply); apply();
+      }
+      for (const cb of def.extraButtons || []) head.addExtraButton(cb);
+      if (def.addItem) head.addExtraButton((b) => b.setIcon("plus").setTooltip(def.addItem.name).onClick((e) => def.addItem.action(e.currentTarget)));
+      this.watchVisible(el, def);
+      return el;
+    }
+    const setting = new Setting(parent).setName(def.name);
+    if (def.desc) setting.setDesc(def.desc);
+    if (def.control) this.renderControl(setting, def.control);
+    else if (def.render) { const cleanup = def.render(setting, { listEl: parent }); if (cleanup) this.cleanups.push(cleanup); }
+    else if (def.action) setting.settingEl.addEventListener("click", () => def.action(setting.settingEl, index));
+    if (list && list.onDelete) setting.addExtraButton((b) => b.setIcon("trash-2").onClick(() => list.onDelete(index)));
+    this.watchVisible(setting.settingEl, def);
+    return setting.settingEl;
+  }
+  renderControl(setting, c) {
+    const value = this.getControlValue(c.key) ?? c.defaultValue;
+    const set = (v) => void this.setControlValue(c.key, v);
+    if (c.type === "toggle") setting.addToggle((t) => t.setValue(!!value).onChange(set));
+    else if (c.type === "dropdown") setting.addDropdown((d) => d.addOptions(c.options).setValue(value).onChange(set));
+    else if (c.type === "color") setting.addColorPicker((p) => p.setValue(value).onChange(set));
+    else if (c.type === "slider") setting.addSlider((sl) => { sl.setLimits(c.min, c.max, c.step).setValue(value); sl.sliderEl.addEventListener("input", () => set(Number(sl.sliderEl.value))); });
+    else setting.addText((t) => t.setValue(value ?? "").onChange(set));
+  }
+}
 
 function input(parent, type) { const i = mk("input", {}, parent); i.type = type; return i; }
 function button(parent) {

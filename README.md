@@ -19,7 +19,7 @@ Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper E
 
 ## Features
 
-- **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything, filter by name or type. Removing a wallpaper can be undone from the notice that appears.
+- **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything, search by name, path or type. Removing a wallpaper can be undone from the notice that appears.
 - **Wallpaper by theme**: pick one wallpaper for the light theme and one for the dark theme; Scenery switches when the theme does.
 - **Slideshow**: switch on a timer, in order or shuffled, with a cross-fade.
 - **Appearance**: readability dimming, sidebar tint, blur, brightness, saturation, fit mode, mouse parallax. Shared by all wallpapers, or set per wallpaper with **Give this wallpaper its own appearance**.
@@ -31,11 +31,11 @@ Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper E
 
 ## Getting started
 
-Enable the plugin and the Aurora effect appears. Open **Settings → Scenery**, add wallpapers to the library and press **Use**. If text becomes hard to read, raise **Readability dimming**.
+Enable the plugin and the Aurora effect appears. Open **Settings → Scenery**. The **+** button at the top of the library adds wallpapers (a vault file, a vault folder, a URL or path) and creates scenes and packages; **Use** on a row switches to it. If text becomes hard to read, raise **Readability dimming**.
 
 ## Scenes: compose a wallpaper without code
 
-1. Run the command **Scenery: Create scene** (or press **Create scene** in the library).
+1. Run the command **Scenery: Create scene** (or **+ → Create scene** in the library).
 2. The scene editor opens in the right sidebar, and the scene is shown as your wallpaper while you edit it.
 3. Press **Add layer** to stack images, videos, effects, colours or gradients, and packages.
 
@@ -54,7 +54,7 @@ Each layer has:
 
 The export button next to the scene's name (or the command **Export scene to a folder**) writes the scene to `Scenery/<scene name>/` in your vault. Images, videos and packages from the vault are copied into that folder, so you can zip it and share it. URLs and paths outside the vault are recorded as they are, not copied.
 
-To import, put the folder in a vault and choose it with **Vault folder** in the library. It arrives as an ordinary, editable scene.
+To import, put the folder in a vault and choose it with **+ → Vault folder** in the library. It arrives as an ordinary, editable scene.
 
 An imported or exported scene stays **linked** to its folder: when `scenery.json` there changes (for example, when the Studio saves into it), the scene in Obsidian is replaced with the new version. Edits made in Obsidian's scene editor since the last export are lost when that happens, so export first if you want to keep them.
 
@@ -71,7 +71,7 @@ The full reference is in [docs/authoring.md](docs/authoring.md).
 
 ### Wallpaper Engine web wallpapers (experimental)
 
-A folder containing a Wallpaper Engine **web** wallpaper (`project.json`) can be added with **Vault folder** and is loaded as a package.
+A folder containing a Wallpaper Engine **web** wallpaper (`project.json`) can be added with **+ → Vault folder** and is loaded as a package.
 
 - User properties from `project.json` (slider, colour, checkbox, combo, text input) appear in the settings and are passed to `wallpaperPropertyListener.applyUserProperties`. `applyGeneralProperties` and `setPaused` are called as well.
 - There is no audio capture: audio listeners receive silence, so audio-reactive wallpapers will not react.
@@ -111,7 +111,7 @@ Everything stays in your browser: the Studio uploads nothing. Limits: in the Stu
 ## Compatibility
 
 - Desktop only.
-- Requires Obsidian 1.8.7 or later.
+- Requires Obsidian 1.13.0 or later.
 - Tested with the default theme and with Minimal. Themes that force their own opaque backgrounds may leave some panels non-transparent.
 - The settings window is never made transparent.
 

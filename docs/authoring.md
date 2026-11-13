@@ -10,7 +10,7 @@ A package is a wallpaper written in HTML, CSS and JavaScript. If you would rathe
 2. A working example (`scenery.json` and `index.html`) is created in `Scenery/<name>/` and shown as your wallpaper.
 3. Edit the two files in any editor. **Saving reloads the wallpaper.**
 
-To use an existing folder, choose it with **Settings → Scenery → Vault folder**. It must contain `scenery.json`.
+To use an existing folder, choose it with **Settings → Scenery → + → Vault folder**. It must contain `scenery.json`.
 
 ## Folder layout
 

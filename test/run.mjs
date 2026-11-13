@@ -126,7 +126,8 @@ check("page receives props and theme through window.scenery", api.count === 60 &
 check("page cannot reach the app", await frames()[0].evaluate(() => { try { return !parent.document; } catch { return true; } }));
 await openSettings();
 const props = page.locator("#panel > div > div").filter({ hasText: "Number of orbs" });
-check("settings show one control per declared property", (await props.locator(".setting-item").count()) === 9);
+// Heading, the package's description line, then the eight declared properties.
+check("settings show one control per declared property", (await props.locator(".setting-item").count()) === 10);
 await props.locator("input[type=range]").first().evaluate((el) => { el.value = 15; el.dispatchEvent(new Event("input")); });
 await props.locator("select").selectOption("ring"); await props.locator("input[type=text]").fill("Hello"); await wait(200);
 const edited = await frames()[0].evaluate(() => ({ orbs: orbs.length, shape: props.shape, label: document.getElementById("label").textContent }));
@@ -196,7 +197,7 @@ check("project.json values reach wallpaperPropertyListener", we1.schemecolor ===
 check("storage and audio calls do not throw", we1.storage === "v" && we1.audio === 128, we1);
 await openSettings();
 const weSection = page.locator("#panel > div > div").filter({ hasText: "Scheme color" });
-check("its properties appear in order, labels cleaned", JSON.stringify(await weSection.locator(".setting-item-name").allTextContents()) === JSON.stringify(["Settings for “WE Demo”", "Scheme color", "Mode", "Speed", "Flag"]));
+check("its properties appear in order, labels cleaned", JSON.stringify(await weSection.locator(".setting-item-name").allTextContents()) === JSON.stringify(["Settings for “WE Demo”", "Wallpaper Engine", "Scheme color", "Mode", "Speed", "Flag"]));
 await weSection.locator("input[type=color]").fill("#ff0000"); await weSection.locator("select").selectOption("a"); await setPaused(true); await wait(200);
 const we2 = await frames()[0].evaluate(() => log);
 check("edits and pause reach the page in Wallpaper Engine's format", we2.schemecolor === "1 0 0" && we2.mode === "a" && we2.paused === true, we2);
@@ -210,14 +211,17 @@ const count = await rows.count();
 check("every library row has a thumbnail", (await page.locator("#panel .scenery-item > .scenery-thumb").count()) === count && count > 8, count);
 check("effect thumbnails draw without animating", await run(() => { const c = document.querySelector("#panel .scenery-thumb canvas"); return c.width > 0 && c.getContext("2d").getImageData(c.width >> 1, c.height >> 1, 1, 1).data[3] === 255; }));
 check("scene thumbnails are built from the scene's layers", (await page.locator("#panel .scenery-thumb .scenery-sl").count()) > 0);
-check("the add row does not overflow the pane", await run(() => { const p = document.querySelector("#panel"); return p.scrollWidth <= p.clientWidth; }));
+check("the settings do not overflow the pane sideways", await run(() => { const p = document.querySelector("#panel"); return p.scrollWidth <= p.clientWidth; }));
+await page.locator('#panel .scenery-library button[data-icon="plus"]').click();
+check("the + button offers every way to add a wallpaper", (await run(() => __menu.items.length)) === 6);
 await rows.first().locator('button[data-icon="pencil"]').click();
 await run(() => { const i = __modal.contentEl.querySelector("input"); i.value = "Northern lights"; i.dispatchEvent(new Event("input")); __modal.contentEl.querySelector("button").click(); }); await wait(200);
 check("rename changes the item's name", (await run(() => plugin.settings.items[0].name)) === "Northern lights" && (await rows.first().locator(".setting-item-name").textContent()) === "Northern lights");
 const order1 = await run(() => plugin.settings.items.map((i) => i.id));
-await run(() => { const r = document.querySelectorAll("#panel .scenery-item"); const dt = new DataTransfer(); r[0].dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true })); r[2].dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true })); r[2].dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true })); }); await wait(200);
+// Obsidian draws the drag handle and reports the move; call what it would call.
+await run(() => __tab.settingItems.find((d) => d.type === "list").onReorder(0, 2)); await wait(200);
 const order2 = await run(() => plugin.settings.items.map((i) => i.id));
-check("dragging a library row reorders the library", order2[2] === order1[0] && order2[0] === order1[1], { order1: order1.slice(0, 3), order2: order2.slice(0, 3) });
+check("reordering the list reorders the library", order2[2] === order1[0] && order2[0] === order1[1], { order1: order1.slice(0, 3), order2: order2.slice(0, 3) });
 check("settings are saved", (await run(() => __saved?.items?.[2]?.name)) === "Northern lights");
 await run(() => { const p = document.querySelector("#panel"); p.style.height = "400px"; p.scrollTop = 260; });
 // Click from inside the page: a Playwright click would scroll the button into view first.
@@ -254,21 +258,21 @@ const after2 = await run(() => ({ ids: plugin.settings.items.map((i) => i.id), a
 check("undo puts it back in the same place and makes it active again", JSON.stringify(after2) === JSON.stringify(before2), after2);
 check("the settings list shows it again", (await page.locator("#panel .scenery-item").count()) === before2.ids.length);
 
-const total = await page.locator("#panel .scenery-item").count();
-const find = page.locator("#panel .setting-item").filter({ hasText: "Find" });
-await find.locator("input[type=text]").fill("rain"); await wait(100);
-check("typing in the filter narrows the list and keeps the field focused", (await page.locator("#panel .scenery-item").count()) === 1 && (await run(() => document.activeElement?.type)) === "text");
-await find.locator("input[type=text]").fill(""); await find.locator("select").selectOption("scene"); await wait(100);
-const scenesShown = await page.locator("#panel .scenery-item").count();
-check("the type filter shows only that type", scenesShown > 0 && scenesShown === (await run(() => plugin.settings.items.filter((i) => i.type === "scene").length)));
-await find.locator("select").selectOption(""); await wait(100);
-check("clearing the filter shows everything", (await page.locator("#panel .scenery-item").count()) === total);
+const shownRows = page.locator("#panel .scenery-item:visible");
+const total = await shownRows.count();
+const search = page.locator("#panel .scenery-library input[type=search]");
+await search.fill("rain"); await wait(100);
+check("searching the list narrows it and keeps the field focused", (await shownRows.count()) === 1 && (await run(() => document.activeElement?.type)) === "search");
+await search.fill("Scene ·"); await wait(100);
+const scenesShown = await shownRows.count();
+check("the search also matches a wallpaper's type", scenesShown > 0 && scenesShown === (await run(() => plugin.settings.items.filter((i) => i.type === "scene").length)));
+await search.fill(""); await wait(100);
+check("clearing the search shows everything", (await shownRows.count()) === total);
 
-await page.locator("#panel details.scenery-section > summary").filter({ hasText: "Playback" }).click(); await wait(200);
-check("folding a section is remembered", JSON.stringify(await run(() => plugin.settings.collapsed)) === '["playback"]' && JSON.stringify(await run(() => __saved.collapsed)) === '["playback"]');
-await openSettings();
-check("it stays folded when the settings are rebuilt", await run(() => !document.querySelectorAll("#panel details.scenery-section")[2].open && document.querySelectorAll("#panel details.scenery-section")[0].open));
-await page.locator("#panel details.scenery-section > summary").filter({ hasText: "Playback" }).click();
+check("slideshow options appear only while the slideshow is on", (await page.locator("#panel .setting-item:visible").filter({ hasText: "Interval (minutes)" }).count()) === 0);
+await page.locator("#panel .setting-item").filter({ hasText: "Switch automatically" }).locator("input[type=checkbox]").check(); await wait(200);
+check("turning the slideshow on reveals them", (await page.locator("#panel .setting-item:visible").filter({ hasText: "Interval (minutes)" }).count()) === 1 && (await run(() => plugin.settings.slideshow)));
+await page.locator("#panel .setting-item").filter({ hasText: "Switch automatically" }).locator("input[type=checkbox]").uncheck();
 
 const themeRows = page.locator("#panel .setting-item").filter({ hasText: "When the theme is" });
 await themeRows.nth(0).locator("select").selectOption("effect-snow");

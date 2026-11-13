@@ -115,8 +115,6 @@ export interface ScenerySettings {
   popouts: boolean;
   /** Wallpaper ids to switch to when the theme turns light or dark. Empty = leave as is. */
   themeWallpapers: { light: string; dark: string };
-  /** Keys of the settings sections the user has folded away. */
-  collapsed: string[];
 }
 
 /** The appearance settings a wallpaper can override for itself. */
@@ -157,7 +155,6 @@ export const DEFAULT_SETTINGS: ScenerySettings = {
   packageFolder: "Scenery",
   popouts: true,
   themeWallpapers: { light: "", dark: "" },
-  collapsed: [],
 };
 
 export const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg"];

@@ -271,22 +271,6 @@ html.scenery-on.scenery-on.scenery-on.scenery-on .workspace-tab-header.is-active
   width: 100%;
 }
 
-/* The "add wallpaper" row holds more buttons than fit on one line. */
-.scenery-add.setting-item {
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--size-4-2);
-}
-
-.scenery-add .setting-item-info {
-  margin-right: 0;
-}
-
-.scenery-add .setting-item-control {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
 .scenery-wide-input {
   width: 100%;
 }
@@ -296,7 +280,7 @@ html.scenery-on.scenery-on.scenery-on.scenery-on .workspace-tab-header.is-active
   min-width: 0;
 }
 
-/* ---------- Library thumbnails and drag-to-reorder ---------- */
+/* ---------- Library thumbnails, layer drag-to-reorder ---------- */
 
 .scenery-thumb {
   position: relative;
@@ -321,37 +305,19 @@ html.scenery-on.scenery-on.scenery-on.scenery-on .workspace-tab-header.is-active
   animation-play-state: paused;
 }
 
-.scenery-item[draggable="true"],
 .scenery-layer-row[draggable="true"] {
   cursor: grab;
 }
 
-.scenery-item.is-dragging,
 .scenery-layer-row.is-dragging {
   opacity: 0.4;
 }
 
-.scenery-item.is-drop-target,
 .scenery-layer-row.is-drop-target {
   box-shadow: inset 0 2px 0 var(--interactive-accent);
 }
 
-/* ---------- Collapsible settings sections, undo notice ---------- */
-
-.scenery-section {
-  margin-top: var(--size-4-4);
-}
-
-.scenery-section > summary {
-  cursor: pointer;
-  padding: var(--size-4-2) 0;
-  font-weight: var(--font-semibold);
-  color: var(--text-normal);
-}
-
-.scenery-section > summary:hover {
-  color: var(--text-accent);
-}
+/* ---------- Undo notice ---------- */
 
 .scenery-undo {
   margin-left: var(--size-4-3);

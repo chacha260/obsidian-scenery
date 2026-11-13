@@ -31,6 +31,7 @@ export default class SceneryPlugin extends Plugin {
   private renderers = new Map<Window, Renderer>();
   private userPaused = false;
   private slideshowTimer: number | null = null;
+  private settingTab: ScenerySettingTab | null = null;
   private wasDark = false;
   /** Folders of linked scenes whose manifest changed on disk. */
   private changedFolders = new Set<string>();
@@ -42,7 +43,8 @@ export default class SceneryPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    this.addSettingTab(new ScenerySettingTab(this.app, this));
+    this.settingTab = new ScenerySettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
     this.registerView(EDITOR_VIEW, (leaf) => new SceneEditorView(leaf, this));
     this.addCommand({ id: "new-scene", name: t("cmd.newScene"), callback: () => void this.createScene() });
     this.addCommand({
@@ -197,7 +199,6 @@ export default class SceneryPlugin extends Plugin {
     const data = (await this.loadData()) as Partial<ScenerySettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
     this.settings.themeWallpapers = { ...DEFAULT_SETTINGS.themeWallpapers, ...data?.themeWallpapers };
-    this.settings.collapsed = [...(data?.collapsed ?? [])];
     this.settings.items = (data?.items ?? DEFAULT_SETTINGS.items).map((i) => ({
       ...i,
       // Fill in fields that older versions did not save.
@@ -239,6 +240,8 @@ export default class SceneryPlugin extends Plugin {
 
   reloadWallpaper() {
     if (this.settings.enabled) this.all((r) => r.reload(this.activeItem));
+    // A package's manifest may have changed along with its page.
+    this.settingTab?.forgetManifests();
   }
 
   /** Called by the settings tab after the user changed a package's values. */

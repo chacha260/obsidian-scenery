@@ -1,15 +1,27 @@
-import { App, Modal, Notice, Platform, PluginSettingTab, Setting, setIcon, TFolder } from "obsidian";
-import { moveItem, reorderable } from "./dnd";
+import {
+  App,
+  ExtraButtonComponent,
+  Menu,
+  Modal,
+  Notice,
+  Platform,
+  PluginSettingTab,
+  Setting,
+  SettingDefinition,
+  SettingDefinitionItem,
+  setIcon,
+  TFolder,
+} from "obsidian";
+import { moveItem } from "./dnd";
 import { EffectPlayer } from "./effects";
-import { hasManifest, loadManifest, PackageManifest } from "./package";
-import { renderProperties } from "./propsui";
+import { hasManifest, loadManifest, PackageManifest, resolveValues, selectOptions } from "./package";
 import { importScene } from "./sceneio";
 import { t } from "./i18n";
 import type SceneryPlugin from "./main";
 import { FilePicker, FolderPicker, NameModal } from "./pickers";
 import { SceneRuntime } from "./scene";
 import { resolveSource } from "./source";
-import { DEFAULT_SETTINGS, detectType, FitMode, Look, pickLook, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
+import { DEFAULT_SETTINGS, detectType, EFFECT_IDS, Look, pickLook, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
 
 class UrlModal extends Modal {
   private source = "";
@@ -59,29 +71,287 @@ class UrlModal extends Modal {
   }
 }
 
-type NumericKey = {
-  [K in keyof ScenerySettings]: ScenerySettings[K] extends number ? K : never;
-}[keyof ScenerySettings];
+/** Settings whose change needs more than new CSS values: timers, windows, what is shown. */
+const NEEDS_REFRESH = new Set(["enabled", "pauseOnBlur", "popouts", "slideshow", "intervalMinutes", "shuffle"]);
 
+// Control keys are namespaced so one tab can edit several stores.
+const LOOK = "look.";
+const PACKAGE = "pkg.";
+const THEME = "theme.";
+const OWN_LOOK = "own-look";
+const ALLOW_NOTE = "allow-note";
+
+/**
+ * The settings tab, described declaratively so every setting shows up in Obsidian's
+ * settings search. The library is a list whose rows are drawn by hand (thumbnail,
+ * buttons); everything else is plain controls. Appearance controls edit either the
+ * shared look or the current wallpaper's own, and a package's declared properties
+ * are turned into controls of their own.
+ */
 export class ScenerySettingTab extends PluginSettingTab {
+  /** Manifests of packages shown here, or the error from reading one. Loaded on demand. */
+  private manifests = new Map<string, PackageManifest | Error>();
+  private loading = new Set<string>();
+
   constructor(app: App, private plugin: SceneryPlugin) {
     super(app, plugin);
   }
 
-  /** Live previews in the library; they hold canvases and observers that must be released. */
-  private previews: { destroy(): void }[] = [];
+  // ---- redrawing ----
 
-  private clearPreviews() {
-    for (const p of this.previews) p.destroy();
-    this.previews = [];
+  /** The element that scrolls the settings, if it is scrolled at all. */
+  private scroller(): HTMLElement | null {
+    for (let el: HTMLElement | null = this.containerEl; el; el = el.parentElement) {
+      if (el.scrollTop > 0) return el;
+    }
+    return null;
   }
 
-  hide() {
-    this.clearPreviews();
+  /** Rebuild the tab from fresh definitions without throwing the view back to the top. */
+  redraw() {
+    // Hidden tabs are rebuilt by Obsidian when they are opened.
+    if (!this.containerEl.isConnected) return;
+    const scroller = this.scroller();
+    const top = scroller?.scrollTop ?? 0;
+    this.update();
+    if (scroller) scroller.scrollTop = top;
   }
 
-  /** A small still preview at the start of a library row. */
-  private thumbnail(row: Setting, item: WallpaperItem) {
+  /** Package files changed on disk: what we remember about them is stale. */
+  forgetManifests() {
+    this.manifests.clear();
+    this.redraw();
+  }
+
+  private async save(full = false) {
+    await this.plugin.saveSettings();
+    if (full) this.plugin.refresh();
+    else this.plugin.applyStyle();
+  }
+
+  private closeSettings() {
+    // No public API closes the settings window; this one is long-standing and widely used.
+    (this.app as unknown as { setting?: { close?: () => void } }).setting?.close?.();
+  }
+
+  // ---- definitions ----
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const { plugin } = this;
+    const s = plugin.settings;
+    const active = plugin.activeItem;
+
+    const slider = (key: string, name: string, range: [number, number, number], desc?: string): SettingDefinition => ({
+      name,
+      desc,
+      control: { type: "slider", key, min: range[0], max: range[1], step: range[2] },
+    });
+    const toggle = (key: string, name: string, desc?: string): SettingDefinition => ({ name, desc, control: { type: "toggle", key } });
+
+    const wallpapers: Record<string, string> = { "": t("set.theme.none") };
+    for (const item of s.items) wallpapers[item.id] = item.name;
+
+    return [
+      toggle("enabled", t("set.enabled"), t("set.enabled.desc")),
+      {
+        type: "list",
+        heading: t("set.library"),
+        cls: "scenery-library",
+        emptyState: t("set.library.empty"),
+        search: {
+          placeholder: t("set.filter.placeholder"),
+          match: (def, query) => {
+            const needle = query.trim().toLowerCase();
+            const haystack = [def.name, typeof def.desc === "string" ? def.desc : "", ...(def.aliases ?? [])];
+            return haystack.some((text) => text.toLowerCase().includes(needle));
+          },
+        },
+        items: s.items.map((item) => this.libraryRow(item)),
+        onDelete: (index) => {
+          const item = s.items[index];
+          // The notice it shows can bring the wallpaper back; redraw then too.
+          if (item) void plugin.removeItem(item.id, () => this.redraw()).then(() => this.redraw());
+        },
+        onReorder: (from, to) => {
+          moveItem(s.items, from, to);
+          void this.save(true).then(() => this.redraw());
+        },
+        addItem: { name: t("set.add"), action: (el) => this.showAddMenu(el) },
+      },
+      ...(active?.type === "package" ? this.packageGroup(active) : []),
+      {
+        type: "group",
+        heading: active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance"),
+        extraButtons: [
+          (button) =>
+            button
+              .setIcon("rotate-ccw")
+              .setTooltip(t("pkg.reset"))
+              .onClick(() => {
+                // A wallpaper's own look goes back to the shared one; the shared one to the defaults.
+                if (active?.look) active.look = pickLook(s);
+                else Object.assign(s, pickLook(DEFAULT_SETTINGS));
+                void this.save().then(() => this.redraw());
+              }),
+        ],
+        items: [
+          { ...toggle(OWN_LOOK, t("set.ownLook"), t("set.ownLook.desc")), visible: () => !!plugin.activeItem },
+          {
+            name: t("set.fit"),
+            desc: t("set.fit.desc"),
+            control: {
+              type: "dropdown",
+              key: `${LOOK}fit`,
+              options: { cover: t("set.fit.cover"), contain: t("set.fit.contain"), fill: t("set.fit.fill") },
+            },
+          },
+          slider(`${LOOK}dim`, t("set.dim"), [0, 100, 1], t("set.dim.desc")),
+          slider(`${LOOK}panelTint`, t("set.panelTint"), [0, 100, 1], t("set.panelTint.desc")),
+          slider(`${LOOK}blur`, t("set.blur"), [0, 40, 1]),
+          slider(`${LOOK}brightness`, t("set.brightness"), [20, 150, 1]),
+          slider(`${LOOK}saturation`, t("set.saturation"), [0, 200, 1]),
+          slider(`${LOOK}parallax`, t("set.parallax"), [0, 40, 1], t("set.parallax.desc")),
+        ],
+      },
+      {
+        type: "group",
+        heading: t("set.playback"),
+        items: [
+          slider("volume", t("set.volume"), [0, 100, 1], t("set.volume.desc")),
+          slider("playbackRate", t("set.rate"), [0.25, 2, 0.05]),
+          slider("fps", t("set.fps"), [10, 60, 5], t("set.fps.desc")),
+          toggle("pauseOnBlur", t("set.pauseOnBlur"), t("set.pauseOnBlur.desc")),
+          toggle("popouts", t("set.popouts"), t("set.popouts.desc")),
+        ],
+      },
+      {
+        type: "group",
+        heading: t("set.slideshow"),
+        items: [
+          toggle("slideshow", t("set.slideshow.enable")),
+          { ...slider("intervalMinutes", t("set.interval"), [1, 120, 1]), visible: () => s.slideshow },
+          { ...toggle("shuffle", t("set.shuffle")), visible: () => s.slideshow },
+        ],
+      },
+      {
+        type: "group",
+        heading: t("set.theme"),
+        items: (["light", "dark"] as const).map(
+          (mode): SettingDefinition => ({
+            name: t(`set.theme.${mode}`),
+            desc: t("set.theme.desc"),
+            control: { type: "dropdown", key: `${THEME}${mode}`, options: wallpapers },
+          })
+        ),
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    const s = this.plugin.settings;
+    const active = this.plugin.activeItem;
+    if (key === OWN_LOOK) return !!active?.look;
+    if (key === ALLOW_NOTE) return !!active?.allowNote;
+    if (key.startsWith(LOOK)) return (active?.look ?? s)[key.slice(LOOK.length) as keyof Look];
+    if (key.startsWith(THEME)) {
+      const id = s.themeWallpapers[key.slice(THEME.length) as "light" | "dark"];
+      return s.items.some((i) => i.id === id) ? id : "";
+    }
+    if (key.startsWith(PACKAGE)) {
+      const manifest = active && this.manifests.get(active.id);
+      return manifest && !(manifest instanceof Error) ? resolveValues(manifest, active.values)[key.slice(PACKAGE.length)] : undefined;
+    }
+    return s[key as keyof ScenerySettings];
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const { plugin } = this;
+    const s = plugin.settings;
+    const active = plugin.activeItem;
+
+    if (key === OWN_LOOK) {
+      if (!active) return;
+      // Start from what is on screen now, so switching it on changes nothing visible.
+      if (value) active.look = pickLook(s);
+      else delete active.look;
+      await this.save();
+      this.redraw();
+    } else if (key.startsWith(LOOK)) {
+      const target = (active?.look ?? s) as unknown as Record<string, unknown>;
+      target[key.slice(LOOK.length)] = value;
+      await this.save();
+    } else if (key.startsWith(THEME)) {
+      s.themeWallpapers[key.slice(THEME.length) as "light" | "dark"] = String(value);
+      await plugin.saveSettings();
+      plugin.applyThemeWallpaper();
+      this.redraw();
+    } else if (key === ALLOW_NOTE || key.startsWith(PACKAGE)) {
+      const manifest = active && this.manifests.get(active.id);
+      if (!active || !manifest || manifest instanceof Error) return;
+      if (key === ALLOW_NOTE) active.allowNote = !!value;
+      else (active.values ??= {})[key.slice(PACKAGE.length)] = value;
+      plugin.packageChanged(active, manifest);
+    } else {
+      (s as unknown as Record<string, unknown>)[key] = value;
+      if (key === "popouts") plugin.syncWindows();
+      await this.save(NEEDS_REFRESH.has(key));
+      this.refreshDomState();
+    }
+  }
+
+  // ---- library ----
+
+  private libraryRow(item: WallpaperItem): SettingDefinition {
+    const { plugin } = this;
+    const desc =
+      (item.type === "scene"
+        ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
+        : `${t(`type.${item.type}`)} · ${item.source}`) +
+      (item.folder ? ` · ${item.folder}` : "") +
+      (item.look ? ` · ${t("set.hasLook")}` : "");
+    return {
+      name: item.name,
+      desc,
+      render: (setting) => {
+        const active = item.id === plugin.settings.activeId;
+        setting.setName(item.name).setDesc(desc);
+        setting.settingEl.addClass("scenery-item");
+        setting.settingEl.toggleClass("is-active", active);
+        const release = this.thumbnail(setting, item);
+        if (item.type === "scene") {
+          setting.addExtraButton((b) =>
+            b
+              .setIcon("layers")
+              .setTooltip(t("cmd.editScene"))
+              .onClick(() => {
+                this.closeSettings();
+                void plugin.openEditor(item.id);
+              })
+          );
+        }
+        setting.addExtraButton((b) =>
+          b
+            .setIcon("pencil")
+            .setTooltip(t("set.rename"))
+            .onClick(() => {
+              new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), (name) => {
+                item.name = name;
+                void this.save(true).then(() => this.redraw());
+              }).open();
+            })
+        );
+        setting.addButton((b) => {
+          b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
+          if (active) b.setCta();
+          b.onClick(() => void plugin.setActive(item.id).then(() => this.redraw()));
+        });
+        return release;
+      },
+    };
+  }
+
+  /** A small still preview at the start of a library row. Returns what releases it. */
+  private thumbnail(row: Setting, item: WallpaperItem): () => void {
     const el = row.settingEl.createDiv({ cls: "scenery-thumb" });
     row.settingEl.prepend(el);
     if (item.type === "image") {
@@ -96,169 +366,53 @@ export class ScenerySettingTab extends PluginSettingTab {
       video.src = `${resolveSource(this.app, item.source)}#t=0.5`;
     } else if (item.type === "effect") {
       // Never started: the player draws one frame and stays still.
-      this.previews.push(new EffectPlayer(el, item.source));
+      const player = new EffectPlayer(el, item.source);
+      return () => player.destroy();
     } else if (item.type === "scene") {
       const scene = new SceneRuntime(this.app, el, () => this.plugin.settings);
       scene.setPaused(true);
       // Package layers would each start a live page; leave them out of a thumbnail.
       scene.sync((item.scene ?? []).filter((l) => l.kind !== "package"));
-      this.previews.push(scene);
+      return () => scene.destroy();
     } else {
       el.addClass("is-icon");
       setIcon(el, item.type === "web" ? "globe" : "package");
     }
+    return () => undefined;
   }
 
-  private closeSettings() {
-    // No public API closes the settings window; this one is long-standing and widely used.
-    (this.app as unknown as { setting?: { close?: () => void } }).setting?.close?.();
-  }
-
-  private async commit(full = false) {
-    await this.plugin.saveSettings();
-    if (full) this.plugin.refresh();
-    else this.plugin.applyStyle();
-  }
-
-  private slider(
-    el: HTMLElement,
-    key: NumericKey,
-    name: string,
-    range: [number, number, number],
-    desc?: string,
-    full = false,
-    // Appearance sliders may edit one wallpaper's own look; its "reset" then means the shared value.
-    target: Partial<Record<NumericKey, number>> = this.plugin.settings,
-    defaults: ScenerySettings = DEFAULT_SETTINGS
-  ) {
-    const setting = new Setting(el).setName(name);
-    if (desc) setting.setDesc(desc);
-    setting
-      .addSlider((s) => {
-        s.setLimits(...range).setValue(target[key] as number);
-        // Show the effect while dragging; save once the slider is released.
-        if (!full) {
-          s.sliderEl.addEventListener("input", () => {
-            target[key] = Number(s.sliderEl.value);
-            this.plugin.applyStyle();
-          });
-        }
-        s.onChange(async (v) => {
-          target[key] = v;
-          await this.commit(full);
-        });
-      })
-      .addExtraButton((b) =>
-        b.setIcon("rotate-ccw").onClick(async () => {
-          target[key] = defaults[key];
-          await this.commit(full);
-          this.display();
-        })
-      );
-  }
-
-  private filterText = "";
-  private filterType = "";
-
-  private matchesFilter(item: WallpaperItem) {
-    if (this.filterType && item.type !== this.filterType) return false;
-    const needle = this.filterText.trim().toLowerCase();
-    return !needle || item.name.toLowerCase().includes(needle) || item.source.toLowerCase().includes(needle);
-  }
-
-  /** A collapsible group of settings. Which groups are closed is remembered. */
-  private section(key: string, title: string): HTMLElement {
-    const { settings } = this.plugin;
-    const details = this.containerEl.createEl("details", { cls: "scenery-section" });
-    details.open = !settings.collapsed.includes(key);
-    details.createEl("summary", { text: title });
-    details.addEventListener("toggle", () => {
-      const closed = !details.open;
-      if (closed === settings.collapsed.includes(key)) return;
-      settings.collapsed = closed ? [...settings.collapsed, key] : settings.collapsed.filter((k) => k !== key);
-      void this.plugin.saveSettings();
-    });
-    return details.createDiv();
-  }
-
-  /** The element that scrolls the settings, if it is scrolled at all. */
-  private scroller(): HTMLElement | null {
-    for (let el: HTMLElement | null = this.containerEl; el; el = el.parentElement) {
-      if (el.scrollTop > 0) return el;
-    }
-    return null;
-  }
-
-  /** Controls generated from the properties a package declares in scenery.json. */
-  private async renderPackage(el: HTMLElement, item: WallpaperItem) {
+  /** Everything that can be added to the library, offered from the list's + button. */
+  private showAddMenu(el: HTMLElement) {
     const { plugin } = this;
-    let manifest: PackageManifest;
-    try {
-      manifest = await loadManifest(this.app, item.source);
-    } catch (e) {
-      new Setting(el).setName(item.name).setHeading();
-      el.createEl("p", { text: `${t("pkg.badManifest")} ${String(e)}`, cls: "setting-item-description" });
-      return;
-    }
-    const redraw = () => {
-      el.empty();
-      void this.renderPackage(el, item);
-    };
-    const changed = () => plugin.packageChanged(item, manifest);
-    const set = (key: string, value: unknown) => {
-      (item.values ??= {})[key] = value;
-      changed();
-    };
+    const s = plugin.settings;
+    const menu = new Menu();
+    const add = (title: string, icon: string, action: () => void) => menu.addItem((item) => item.setTitle(title).setIcon(icon).onClick(action));
 
-    const about = [manifest.description, manifest.author && `by ${manifest.author}`, manifest.version && `v${manifest.version}`];
-    const head = new Setting(el)
-      .setName(t("pkg.settings", { name: item.name }))
-      .setDesc(about.filter(Boolean).join(" · "))
-      .setHeading()
-      .addExtraButton((b) =>
-        b
-          .setIcon("refresh-cw")
-          .setTooltip(t("cmd.reload"))
-          .onClick(() => {
-            plugin.reloadWallpaper();
-            redraw();
-          })
-      )
-      .addExtraButton((b) =>
-        b
-          .setIcon("rotate-ccw")
-          .setTooltip(t("pkg.reset"))
-          .onClick(() => {
-            item.values = {};
-            changed();
-            redraw();
-          })
-      );
-    if (Platform.isDesktopApp) {
-      head.addExtraButton((b) =>
-        b
-          .setIcon("folder-open")
-          .setTooltip(t("pkg.openFolder"))
-          .onClick(() => {
-            // Not in the public API, hence the guarded call.
-            (this.app as unknown as { showInFolder?: (path: string) => void }).showInFolder?.(`${item.source}/${manifest.entry || "index.html"}`);
-          })
-      );
-    }
+    add(t("set.add.file"), "file", () => new FilePicker(this.app, null, (file) => void this.addAndShow([file.path])).open());
+    add(t("set.add.folder"), "folder", () => new FolderPicker(this.app, (folder) => void this.addFolder(folder)).open());
+    add(t("set.add.url"), "link", () => new UrlModal(this.app, (source, type, name) => void this.addAndShow([source], type, name)).open());
+    menu.addSeparator();
+    add(t("cmd.newScene"), "layers", () => {
+      this.closeSettings();
+      void plugin.createScene();
+    });
+    add(t("cmd.newPackage"), "package", () => {
+      const name = `${t("type.package")} ${s.items.filter((i) => i.type === "package").length + 1}`;
+      void plugin.createPackage(name).then(() => this.redraw());
+    });
+    add(t("set.add.effects"), "sparkles", () => {
+      for (const fx of DEFAULT_SETTINGS.items) {
+        if (!s.items.some((i) => i.id === fx.id)) s.items.push({ ...fx });
+      }
+      // Effects added in later versions have no entry in older saved data.
+      for (const id of EFFECT_IDS) {
+        if (!s.items.some((i) => i.type === "effect" && i.source === id)) plugin.addItems([id], "effect", id.charAt(0).toUpperCase() + id.slice(1));
+      }
+      void this.save(true).then(() => this.redraw());
+    });
 
-    renderProperties(el, manifest, item.values, set);
-
-    if (manifest.permissions?.includes("note")) {
-      new Setting(el)
-        .setName(t("pkg.allowNote"))
-        .setDesc(t("pkg.allowNote.desc"))
-        .addToggle((tg) =>
-          tg.setValue(!!item.allowNote).onChange((v) => {
-            item.allowNote = v;
-            changed();
-          })
-        );
-    }
+    const rect = el.getBoundingClientRect();
+    menu.showAtPosition({ x: rect.left, y: rect.bottom }, el.ownerDocument);
   }
 
   /** Add what a vault folder holds: a package, an exported scene, or loose images and videos. */
@@ -280,7 +434,7 @@ export class ScenerySettingTab extends PluginSettingTab {
         }
         await plugin.setActive(item.id);
         plugin.reloadWallpaper();
-        this.display();
+        this.redraw();
       } else {
         void this.addAndShow([folder.path], "package", manifest?.name || folder.name);
       }
@@ -305,274 +459,91 @@ export class ScenerySettingTab extends PluginSettingTab {
     const added = this.plugin.settings.items.length - before;
     if (added) new Notice(t("notice.added", { n: added }));
     await this.plugin.setActive(ids[0]);
-    this.display();
+    this.redraw();
   }
 
-  display() {
-    const { containerEl } = this;
+  // ---- the current package's own settings ----
+
+  private loadPackageManifest(item: WallpaperItem) {
+    if (this.loading.has(item.id)) return;
+    this.loading.add(item.id);
+    loadManifest(this.app, item.source)
+      .then(
+        (manifest) => this.manifests.set(item.id, manifest),
+        (e: unknown) => this.manifests.set(item.id, e instanceof Error ? e : new Error(String(e)))
+      )
+      .finally(() => {
+        this.loading.delete(item.id);
+        this.redraw();
+      });
+  }
+
+  /** Controls generated from the properties a package declares in its manifest. */
+  private packageGroup(item: WallpaperItem): SettingDefinitionItem[] {
     const { plugin } = this;
-    const s = plugin.settings;
-    // Rebuilding the tab would otherwise throw the view back to the top after every action.
-    const scroller = this.scroller();
-    const scrollTop = scroller?.scrollTop ?? 0;
-    const restoreScroll = () => {
-      if (scroller) scroller.scrollTop = scrollTop;
-    };
-    containerEl.empty();
+    const manifest = this.manifests.get(item.id);
+    if (!manifest) {
+      // Read from disk in the background; the group appears once it is known.
+      this.loadPackageManifest(item);
+      return [];
+    }
 
-    new Setting(containerEl)
-      .setName(t("set.enabled"))
-      .setDesc(t("set.enabled.desc"))
-      .addToggle((tg) =>
-        tg.setValue(s.enabled).onChange(async (v) => {
-          s.enabled = v;
-          await this.commit(true);
-        })
-      );
+    const failed = manifest instanceof Error;
+    const items: SettingDefinition[] = [];
+    if (failed) {
+      items.push({ name: t("pkg.badManifest"), desc: manifest.message, searchable: false });
+    } else {
+      for (const [key, p] of Object.entries(manifest.properties ?? {})) {
+        const base = { name: p.label || key, desc: p.description };
+        const k = `${PACKAGE}${key}`;
+        if (p.type === "slider") items.push({ ...base, control: { type: "slider", key: k, min: p.min ?? 0, max: p.max ?? 100, step: p.step ?? 1 } });
+        else if (p.type === "toggle") items.push({ ...base, control: { type: "toggle", key: k } });
+        else if (p.type === "color") items.push({ ...base, control: { type: "color", key: k } });
+        else if (p.type === "select") items.push({ ...base, control: { type: "dropdown", key: k, options: selectOptions(p) } });
+        else items.push({ ...base, control: { type: "text", key: k } });
+      }
+      if (manifest.permissions?.includes("note")) {
+        items.push({ name: t("pkg.allowNote"), desc: t("pkg.allowNote.desc"), control: { type: "toggle", key: ALLOW_NOTE } });
+      }
+      const about = [manifest.description, manifest.author && `by ${manifest.author}`, manifest.version && `v${manifest.version}`].filter(Boolean);
+      if (about.length) items.unshift({ name: about.join(" · "), searchable: false });
+    }
 
-    // ---- Library ----
-    let el = this.section("library", t("set.library"));
-    const listEl = el.createDiv();
-    const renderList = () => {
-      this.clearPreviews();
-      listEl.empty();
-      let shown = 0;
-      s.items.forEach((item, index) => {
-        if (!this.matchesFilter(item)) return;
-        shown++;
-        const active = item.id === s.activeId;
-        const row = new Setting(listEl)
-          .setName(item.name)
-          .setDesc(
-            (item.type === "scene"
-              ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
-              : `${t(`type.${item.type}`)} · ${item.source}`) +
-            (item.folder ? ` · ${item.folder}` : "") +
-            (item.look ? ` · ${t("set.hasLook")}` : "")
-          );
-        this.thumbnail(row, item);
-        reorderable(row.settingEl, "scenery-library", index, (from, to) => {
-          moveItem(s.items, from, to);
-          void this.commit(true).then(() => this.display());
-        });
-        if (item.type === "scene") {
-          row.addExtraButton((b) =>
-            b
-              .setIcon("layers")
-              .setTooltip(t("cmd.editScene"))
+    return [
+      {
+        type: "group",
+        heading: t("pkg.settings", { name: item.name }),
+        cls: "scenery-package",
+        extraButtons: [
+          (button) =>
+            button
+              .setIcon("refresh-cw")
+              .setTooltip(t("cmd.reload"))
+              .onClick(() => plugin.reloadWallpaper()),
+          (button) =>
+            button
+              .setIcon("rotate-ccw")
+              .setTooltip(t("pkg.reset"))
               .onClick(() => {
-                this.closeSettings();
-                void plugin.openEditor(item.id);
-              })
-          );
-        }
-        row.addExtraButton((b) =>
-          b
-            .setIcon("pencil")
-            .setTooltip(t("set.rename"))
-            .onClick(() => {
-              new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), (name) => {
-                item.name = name;
-                void this.commit(true).then(() => this.display());
-              }).open();
-            })
-        );
-        row
-          .addButton((b) => {
-            b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
-            if (active) b.setCta();
-            b.onClick(async () => {
-              await plugin.setActive(item.id);
-              this.display();
-            });
-          })
-          .addExtraButton((b) =>
-            b
-              .setIcon("trash-2")
-              .setTooltip(t("set.remove"))
-              .onClick(async () => {
-                // The notice it shows can bring the wallpaper back; redraw then too.
-                await plugin.removeItem(item.id, () => this.display());
-                this.display();
-              })
-          );
-        row.settingEl.addClass("scenery-item");
-        row.settingEl.toggleClass("is-active", active);
-      });
-      if (!shown) listEl.createEl("p", { text: s.items.length ? t("set.filter.none") : t("set.library.empty"), cls: "setting-item-description" });
-    };
-    new Setting(el)
-      .setName(t("set.filter"))
-      .addText((text) => {
-        text.setPlaceholder(t("set.filter.placeholder")).setValue(this.filterText);
-        text.onChange((v) => {
-          this.filterText = v;
-          // Only the list is rebuilt, so the field keeps its focus while typing.
-          renderList();
-        });
-      })
-      .addDropdown((d) => {
-        d.addOption("", t("set.filter.all"));
-        for (const type of ["image", "video", "web", "effect", "scene", "package"] as WallpaperType[]) d.addOption(type, t(`type.${type}`));
-        d.setValue(this.filterType).onChange((v) => {
-          this.filterType = v;
-          renderList();
-        });
-      });
-    el.appendChild(listEl);
-    renderList();
-
-    const addRow = new Setting(el).setName(t("set.add")).setDesc(t("set.add.desc"));
-    // Many buttons: stack them under the label and let them wrap instead of overflowing.
-    addRow.settingEl.addClass("scenery-add");
-    addRow
-      .addButton((b) =>
-        b.setButtonText(t("set.add.file")).onClick(() => {
-          new FilePicker(this.app, null, (file) => void this.addAndShow([file.path])).open();
-        })
-      )
-      .addButton((b) =>
-        b.setButtonText(t("set.add.folder")).onClick(() => {
-          new FolderPicker(this.app, (folder) => void this.addFolder(folder)).open();
-        })
-      )
-      .addButton((b) =>
-        b.setButtonText(t("set.add.url")).onClick(() => {
-          new UrlModal(this.app, (source, type, name) => void this.addAndShow([source], type, name)).open();
-        })
-      )
-      .addButton((b) =>
-        b.setButtonText(t("cmd.newPackage")).onClick(async () => {
-          const name = `${t("type.package")} ${s.items.filter((i) => i.type === "package").length + 1}`;
-          if (await plugin.createPackage(name)) this.display();
-        })
-      )
-      .addButton((b) =>
-        b
-          .setButtonText(t("cmd.newScene"))
-          .setCta()
-          .onClick(() => {
-            this.closeSettings();
-            void plugin.createScene();
-          })
-      )
-      .addExtraButton((b) =>
-        b
-          .setIcon("sparkles")
-          .setTooltip(t("set.add.effects"))
-          .onClick(async () => {
-            for (const fx of DEFAULT_SETTINGS.items) {
-              if (!s.items.some((i) => i.id === fx.id)) s.items.push({ ...fx });
-            }
-            await this.commit(true);
-            this.display();
-          })
-      );
-
-    const active = plugin.activeItem;
-    if (active?.type === "package") void this.renderPackage(containerEl.createDiv(), active).then(restoreScroll);
-
-    // ---- Appearance ----
-    // These settings are shared by default; a wallpaper can be given its own set.
-    const look: Look = active?.look ?? s;
-    el = this.section("appearance", active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance"));
-    if (active) {
-      new Setting(el)
-        .setName(t("set.ownLook"))
-        .setDesc(t("set.ownLook.desc"))
-        .addToggle((tg) =>
-          tg.setValue(!!active.look).onChange(async (v) => {
-            // Start from what is on screen now, so switching the toggle on changes nothing visible.
-            if (v) active.look = pickLook(s);
-            else delete active.look;
-            await this.commit();
-            this.display();
-          })
-        );
-    }
-    const appearance = (key: "dim" | "panelTint" | "blur" | "brightness" | "saturation" | "parallax", name: string, range: [number, number, number], desc?: string) =>
-      this.slider(el, key, name, range, desc, false, look, active?.look ? s : DEFAULT_SETTINGS);
-    new Setting(el)
-      .setName(t("set.fit"))
-      .setDesc(t("set.fit.desc"))
-      .addDropdown((d) =>
-        d
-          .addOptions({ cover: t("set.fit.cover"), contain: t("set.fit.contain"), fill: t("set.fit.fill") })
-          .setValue(look.fit)
-          .onChange(async (v) => {
-            look.fit = v as FitMode;
-            await this.commit();
-          })
-      );
-    appearance("dim", t("set.dim"), [0, 100, 1], t("set.dim.desc"));
-    appearance("panelTint", t("set.panelTint"), [0, 100, 1], t("set.panelTint.desc"));
-    appearance("blur", t("set.blur"), [0, 40, 1]);
-    appearance("brightness", t("set.brightness"), [20, 150, 1]);
-    appearance("saturation", t("set.saturation"), [0, 200, 1]);
-    appearance("parallax", t("set.parallax"), [0, 40, 1], t("set.parallax.desc"));
-
-    // ---- Playback ----
-    el = this.section("playback", t("set.playback"));
-    this.slider(el, "volume", t("set.volume"), [0, 100, 1], t("set.volume.desc"));
-    this.slider(el, "playbackRate", t("set.rate"), [0.25, 2, 0.05]);
-    this.slider(el, "fps", t("set.fps"), [10, 60, 5], t("set.fps.desc"));
-    new Setting(el)
-      .setName(t("set.pauseOnBlur"))
-      .setDesc(t("set.pauseOnBlur.desc"))
-      .addToggle((tg) =>
-        tg.setValue(s.pauseOnBlur).onChange(async (v) => {
-          s.pauseOnBlur = v;
-          await this.commit(true);
-        })
-      );
-
-    new Setting(el)
-      .setName(t("set.popouts"))
-      .setDesc(t("set.popouts.desc"))
-      .addToggle((tg) =>
-        tg.setValue(s.popouts).onChange(async (v) => {
-          s.popouts = v;
-          plugin.syncWindows();
-          await this.commit(true);
-        })
-      );
-
-    // ---- Slideshow ----
-    el = this.section("slideshow", t("set.slideshow"));
-    new Setting(el).setName(t("set.slideshow.enable")).addToggle((tg) =>
-      tg.setValue(s.slideshow).onChange(async (v) => {
-        s.slideshow = v;
-        await this.commit(true);
-      })
-    );
-    this.slider(el, "intervalMinutes", t("set.interval"), [1, 120, 1], undefined, true);
-    new Setting(el).setName(t("set.shuffle")).addToggle((tg) =>
-      tg.setValue(s.shuffle).onChange(async (v) => {
-        s.shuffle = v;
-        await this.commit(true);
-      })
-    );
-
-    // ---- Per-theme wallpapers ----
-    el = this.section("theme", t("set.theme"));
-    const choices: Record<string, string> = { "": t("set.theme.none") };
-    for (const item of s.items) choices[item.id] = item.name;
-    for (const mode of ["light", "dark"] as const) {
-      new Setting(el)
-        .setName(t(`set.theme.${mode}`))
-        .setDesc(t("set.theme.desc"))
-        .addDropdown((d) =>
-          d
-            .addOptions(choices)
-            .setValue(s.themeWallpapers[mode] && choices[s.themeWallpapers[mode]] ? s.themeWallpapers[mode] : "")
-            .onChange(async (v) => {
-              s.themeWallpapers[mode] = v;
-              await plugin.saveSettings();
-              plugin.applyThemeWallpaper();
-            })
-        );
-    }
-
-    restoreScroll();
+                item.values = {};
+                if (!failed) plugin.packageChanged(item, manifest);
+                this.redraw();
+              }),
+          ...(Platform.isDesktopApp && !failed
+            ? [
+                (button: ExtraButtonComponent) =>
+                  button
+                    .setIcon("folder-open")
+                    .setTooltip(t("pkg.openFolder"))
+                    .onClick(() => {
+                      // Not in the public API, hence the guarded call.
+                      (this.app as unknown as { showInFolder?: (path: string) => void }).showInFolder?.(`${item.source}/${manifest.entry || "index.html"}`);
+                    }),
+              ]
+            : []),
+        ],
+        items,
+      },
+    ];
   }
 }
