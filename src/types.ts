@@ -13,6 +13,8 @@ export interface WallpaperItem {
   values?: Record<string, unknown>;
   /** Packages: the user allowed this wallpaper to learn which note is open. */
   allowNote?: boolean;
+  /** Appearance settings of its own. When absent, the shared appearance settings apply. */
+  look?: Look;
 }
 
 export type LayerKind = "image" | "video" | "effect" | "color" | "package";
@@ -109,6 +111,15 @@ export interface ScenerySettings {
   packageFolder: string;
   /** Also show the wallpaper in pop-out windows. */
   popouts: boolean;
+}
+
+/** The appearance settings a wallpaper can override for itself. */
+export const LOOK_KEYS = ["fit", "dim", "panelTint", "blur", "brightness", "saturation", "parallax"] as const;
+export type Look = Pick<ScenerySettings, (typeof LOOK_KEYS)[number]>;
+
+export function pickLook(from: ScenerySettings | Look): Look {
+  const { fit, dim, panelTint, blur, brightness, saturation, parallax } = from;
+  return { fit, dim, panelTint, blur, brightness, saturation, parallax };
 }
 
 export const EFFECT_IDS = ["aurora", "starfield", "particles", "snow", "fireflies", "rain"] as const;

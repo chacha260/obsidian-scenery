@@ -110,7 +110,7 @@ await run(() => { const rows = document.querySelectorAll(".scenery-layer-row"); 
 const after = await run(() => plugin.activeItem.scene.map((l) => l.kind));
 check("dragging a layer row reorders the layers", before.at(-1) === "image" && after[0] === "image" && after.length === 4, { before, after });
 check("layer order is reflected in z-index", (await run(() => [...document.querySelectorAll(".scenery-sl")].find((e) => e.querySelector("img")).style.zIndex)) === "0");
-await page.locator(".scenery-editor input[type=checkbox]").first().check();
+await page.locator(".scenery-editor input[type=checkbox]").first().check(); await wait(600);
 check("preview toggle lifts the dimming", (await run(() => getComputedStyle(document.querySelector(".scenery-dim")).opacity)) === "0");
 await page.locator(".scenery-editor input[type=checkbox]").first().uncheck();
 await shot("scene");
@@ -217,6 +217,28 @@ await run(() => { const r = document.querySelectorAll("#panel .scenery-item"); c
 const order2 = await run(() => plugin.settings.items.map((i) => i.id));
 check("dragging a library row reorders the library", order2[2] === order1[0] && order2[0] === order1[1], { order1: order1.slice(0, 3), order2: order2.slice(0, 3) });
 check("settings are saved", (await run(() => __saved?.items?.[2]?.name)) === "Northern lights");
+await run(() => { const p = document.querySelector("#panel"); p.style.height = "400px"; p.scrollTop = 260; });
+// Click from inside the page: a Playwright click would scroll the button into view first.
+const scrollBefore = await run(() => { const p = document.querySelector("#panel"); const top = p.scrollTop; [...p.querySelectorAll('.scenery-item button[data-icon="trash-2"]')].at(-1).click(); return top; });
+await wait(300);
+check("removing a wallpaper keeps the settings scrolled where they were", scrollBefore > 200 && Math.abs((await run(() => document.querySelector("#panel").scrollTop)) - scrollBefore) < 5 && (await rows.count()) === count - 1, { scrollBefore, after: await run(() => document.querySelector("#panel").scrollTop) });
+await run(() => { document.querySelector("#panel").style.height = ""; });
+
+const dimVar = () => run(() => document.querySelector(".scenery-root").style.getPropertyValue("--scenery-dim"));
+await run(() => plugin.setActive("effect-snow")); await openSettings();
+const ownToggle = page.locator("#panel .setting-item").filter({ hasText: "Give this wallpaper its own appearance" }).locator("input[type=checkbox]");
+const sharedDim = await dimVar();
+await ownToggle.check(); await wait(200);
+check("turning on a wallpaper's own appearance changes nothing by itself", (await dimVar()) === sharedDim && (await run(() => !!plugin.activeItem.look)));
+const dimSlider = page.locator("#panel .setting-item").filter({ hasText: "Readability dimming" }).locator("input[type=range]");
+await dimSlider.evaluate((el) => { el.value = 10; el.dispatchEvent(new Event("input")); el.dispatchEvent(new Event("change")); }); await wait(200);
+check("its sliders change that wallpaper only", (await dimVar()) === "0.1" && (await run(() => plugin.settings.dim)) === 25 && (await run(() => plugin.activeItem.look.dim)) === 10);
+await run(() => plugin.setActive("effect-rain")); await wait(100);
+check("other wallpapers keep the shared appearance", (await dimVar()) === sharedDim);
+await run(() => plugin.setActive("effect-snow")); await wait(100);
+check("coming back restores the wallpaper's own appearance", (await dimVar()) === "0.1");
+await openSettings(); await ownToggle.uncheck(); await wait(200);
+check("turning it off returns to the shared appearance", (await dimVar()) === sharedDim && (await run(() => plugin.activeItem.look === undefined)));
 await shot("library");
 
 // ---------------------------------------------------------------------------

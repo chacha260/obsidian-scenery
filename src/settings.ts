@@ -9,7 +9,7 @@ import type SceneryPlugin from "./main";
 import { FilePicker, FolderPicker, NameModal } from "./pickers";
 import { SceneRuntime } from "./scene";
 import { resolveSource } from "./source";
-import { DEFAULT_SETTINGS, detectType, FitMode, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
+import { DEFAULT_SETTINGS, detectType, FitMode, Look, pickLook, ScenerySettings, uid, WallpaperItem, WallpaperType } from "./types";
 
 class UrlModal extends Modal {
   private source = "";
@@ -126,28 +126,43 @@ export class ScenerySettingTab extends PluginSettingTab {
     name: string,
     range: [number, number, number],
     desc?: string,
-    full = false
+    full = false,
+    // Appearance sliders may edit one wallpaper's own look; its "reset" then means the shared value.
+    target: Partial<Record<NumericKey, number>> = this.plugin.settings,
+    defaults: ScenerySettings = DEFAULT_SETTINGS
   ) {
     const setting = new Setting(el).setName(name);
     if (desc) setting.setDesc(desc);
     setting
-      .addSlider((s) =>
-        s
-          .setLimits(...range)
-          .setValue(this.plugin.settings[key])
-          
-          .onChange(async (v) => {
-            this.plugin.settings[key] = v;
-            await this.commit(full);
-          })
-      )
+      .addSlider((s) => {
+        s.setLimits(...range).setValue(target[key] as number);
+        // Show the effect while dragging; save once the slider is released.
+        if (!full) {
+          s.sliderEl.addEventListener("input", () => {
+            target[key] = Number(s.sliderEl.value);
+            this.plugin.applyStyle();
+          });
+        }
+        s.onChange(async (v) => {
+          target[key] = v;
+          await this.commit(full);
+        });
+      })
       .addExtraButton((b) =>
         b.setIcon("rotate-ccw").onClick(async () => {
-          this.plugin.settings[key] = DEFAULT_SETTINGS[key];
+          target[key] = defaults[key];
           await this.commit(full);
           this.display();
         })
       );
+  }
+
+  /** The element that scrolls the settings, if it is scrolled at all. */
+  private scroller(): HTMLElement | null {
+    for (let el: HTMLElement | null = this.containerEl; el; el = el.parentElement) {
+      if (el.scrollTop > 0) return el;
+    }
+    return null;
   }
 
   /** Controls generated from the properties a package declares in scenery.json. */
@@ -267,6 +282,12 @@ export class ScenerySettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const { plugin } = this;
     const s = plugin.settings;
+    // Rebuilding the tab would otherwise throw the view back to the top after every action.
+    const scroller = this.scroller();
+    const scrollTop = scroller?.scrollTop ?? 0;
+    const restoreScroll = () => {
+      if (scroller) scroller.scrollTop = scrollTop;
+    };
     this.clearPreviews();
     containerEl.empty();
 
@@ -288,9 +309,9 @@ export class ScenerySettingTab extends PluginSettingTab {
       const row = new Setting(containerEl)
         .setName(item.name)
         .setDesc(
-          item.type === "scene"
+          (item.type === "scene"
             ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
-            : `${t(`type.${item.type}`)} · ${item.source}`
+            : `${t(`type.${item.type}`)} · ${item.source}`) + (item.look ? ` · ${t("set.hasLook")}` : "")
         );
       this.thumbnail(row, item);
       reorderable(row.settingEl, "scenery-library", index, (from, to) => {
@@ -391,28 +412,46 @@ export class ScenerySettingTab extends PluginSettingTab {
       );
 
     const active = plugin.activeItem;
-    if (active?.type === "package") void this.renderPackage(containerEl.createDiv(), active);
+    if (active?.type === "package") void this.renderPackage(containerEl.createDiv(), active).then(restoreScroll);
 
     // ---- Appearance ----
-    new Setting(containerEl).setName(t("set.appearance")).setHeading();
+    // These settings are shared by default; a wallpaper can be given its own set.
+    const look: Look = active?.look ?? s;
+    new Setting(containerEl).setName(active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance")).setHeading();
+    if (active) {
+      new Setting(containerEl)
+        .setName(t("set.ownLook"))
+        .setDesc(t("set.ownLook.desc"))
+        .addToggle((tg) =>
+          tg.setValue(!!active.look).onChange(async (v) => {
+            // Start from what is on screen now, so switching the toggle on changes nothing visible.
+            if (v) active.look = pickLook(s);
+            else delete active.look;
+            await this.commit();
+            this.display();
+          })
+        );
+    }
+    const appearance = (key: "dim" | "panelTint" | "blur" | "brightness" | "saturation" | "parallax", name: string, range: [number, number, number], desc?: string) =>
+      this.slider(containerEl, key, name, range, desc, false, look, active?.look ? s : DEFAULT_SETTINGS);
     new Setting(containerEl)
       .setName(t("set.fit"))
       .setDesc(t("set.fit.desc"))
       .addDropdown((d) =>
         d
           .addOptions({ cover: t("set.fit.cover"), contain: t("set.fit.contain"), fill: t("set.fit.fill") })
-          .setValue(s.fit)
+          .setValue(look.fit)
           .onChange(async (v) => {
-            s.fit = v as FitMode;
+            look.fit = v as FitMode;
             await this.commit();
           })
       );
-    this.slider(containerEl, "dim", t("set.dim"), [0, 100, 1], t("set.dim.desc"));
-    this.slider(containerEl, "panelTint", t("set.panelTint"), [0, 100, 1], t("set.panelTint.desc"));
-    this.slider(containerEl, "blur", t("set.blur"), [0, 40, 1]);
-    this.slider(containerEl, "brightness", t("set.brightness"), [20, 150, 1]);
-    this.slider(containerEl, "saturation", t("set.saturation"), [0, 200, 1]);
-    this.slider(containerEl, "parallax", t("set.parallax"), [0, 40, 1], t("set.parallax.desc"));
+    appearance("dim", t("set.dim"), [0, 100, 1], t("set.dim.desc"));
+    appearance("panelTint", t("set.panelTint"), [0, 100, 1], t("set.panelTint.desc"));
+    appearance("blur", t("set.blur"), [0, 40, 1]);
+    appearance("brightness", t("set.brightness"), [20, 150, 1]);
+    appearance("saturation", t("set.saturation"), [0, 200, 1]);
+    appearance("parallax", t("set.parallax"), [0, 40, 1], t("set.parallax.desc"));
 
     // ---- Playback ----
     new Setting(containerEl).setName(t("set.playback")).setHeading();
@@ -455,5 +494,7 @@ export class ScenerySettingTab extends PluginSettingTab {
         await this.commit(true);
       })
     );
+
+    restoreScroll();
   }
 }

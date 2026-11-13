@@ -18,6 +18,8 @@
 .scenery-dim {
   background-color: var(--background-primary);
   opacity: var(--scenery-dim, 0.55);
+  /* Wallpapers can have their own dimming; ease between them instead of jumping. */
+  transition: opacity 0.4s ease;
 }
 
 .scenery-layer {

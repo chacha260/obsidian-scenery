@@ -21,7 +21,7 @@ Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper E
 
 - **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything.
 - **Slideshow**: switch on a timer, in order or shuffled, with a cross-fade.
-- **Appearance**: readability dimming, sidebar tint, blur, brightness, saturation, fit mode, mouse parallax.
+- **Appearance**: readability dimming, sidebar tint, blur, brightness, saturation, fit mode, mouse parallax. Shared by all wallpapers, or set per wallpaper with **Give this wallpaper its own appearance**.
 - **Battery-friendly**: videos and effects stop while no Obsidian window is focused.
 - **Pop-out windows** show the wallpaper too (can be turned off).
 - **File menu**: right-click an image or video and choose *Set as wallpaper*.

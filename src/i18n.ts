@@ -172,6 +172,10 @@ const en = {
   "studio.opened": "Opened “{name}”",
   "studio.notScenery": "That folder has no scenery.json.",
   "studio.unsaved": "There are unsaved changes.",
+  "set.appearance.own": "Appearance for “{name}” only",
+  "set.ownLook": "Give this wallpaper its own appearance",
+  "set.ownLook.desc": "On: the settings below apply to the current wallpaper only. Off: it uses the shared settings again.",
+  "set.hasLook": "own appearance",
 };
 
 type Key = keyof typeof en;
@@ -350,6 +354,10 @@ const ja: Record<Key, string> = {
   "studio.opened": "「{name}」を開きました",
   "studio.notScenery": "そのフォルダに scenery.json がありません。",
   "studio.unsaved": "保存していない変更があります。",
+  "set.appearance.own": "見た目（「{name}」専用）",
+  "set.ownLook": "この壁紙専用の見た目にする",
+  "set.ownLook.desc": "オン: 下の設定は、いま使っている壁紙にだけ適用されます。オフ: 共通の設定に戻ります。",
+  "set.hasLook": "専用の見た目",
 };
 
 const lang = window.localStorage.getItem("language") ?? "en";

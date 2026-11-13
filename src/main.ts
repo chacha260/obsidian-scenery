@@ -137,7 +137,7 @@ export default class SceneryPlugin extends Plugin {
 
   private attachWindow(win: Window) {
     if (this.renderers.has(win)) return;
-    const renderer = new Renderer(this.app, win, () => this.settings, () => this.noteInfo());
+    const renderer = new Renderer(this.app, win, () => this.effective, () => this.noteInfo());
     renderer.setPreview(this.preview);
     this.renderers.set(win, renderer);
     this.registerDomEvent(win, "blur", () => this.updatePaused());
@@ -187,6 +187,12 @@ export default class SceneryPlugin extends Plugin {
 
   get activeItem(): WallpaperItem | null {
     return this.settings.items.find((i) => i.id === this.settings.activeId) ?? null;
+  }
+
+  /** The settings as they apply to the wallpaper on screen: its own look, if it has one, over the shared one. */
+  get effective(): ScenerySettings {
+    const look = this.activeItem?.look;
+    return look ? { ...this.settings, ...look } : this.settings;
   }
 
   /** Bring the DOM in line with the settings. */
