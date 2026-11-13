@@ -176,6 +176,17 @@ const en = {
   "set.ownLook": "Give this wallpaper its own appearance",
   "set.ownLook.desc": "On: the settings below apply to the current wallpaper only. Off: it uses the shared settings again.",
   "set.hasLook": "own appearance",
+  "notice.removed": "Removed “{name}”",
+  "notice.undo": "Undo",
+  "set.filter": "Find",
+  "set.filter.placeholder": "Name or path",
+  "set.filter.all": "All types",
+  "set.filter.none": "No wallpaper matches.",
+  "set.theme": "Wallpaper by theme",
+  "set.theme.light": "When the theme is light",
+  "set.theme.dark": "When the theme is dark",
+  "set.theme.none": "Do not switch",
+  "set.theme.desc": "Switches to this wallpaper when the theme changes to this mode.",
 };
 
 type Key = keyof typeof en;
@@ -358,6 +369,17 @@ const ja: Record<Key, string> = {
   "set.ownLook": "この壁紙専用の見た目にする",
   "set.ownLook.desc": "オン: 下の設定は、いま使っている壁紙にだけ適用されます。オフ: 共通の設定に戻ります。",
   "set.hasLook": "専用の見た目",
+  "notice.removed": "「{name}」を削除しました",
+  "notice.undo": "元に戻す",
+  "set.filter": "絞り込み",
+  "set.filter.placeholder": "名前またはパス",
+  "set.filter.all": "すべての種類",
+  "set.filter.none": "一致する壁紙がありません。",
+  "set.theme": "テーマごとの壁紙",
+  "set.theme.light": "ライトテーマのとき",
+  "set.theme.dark": "ダークテーマのとき",
+  "set.theme.none": "切り替えない",
+  "set.theme.desc": "テーマがこのモードに変わったとき、この壁紙に切り替えます。",
 };
 
 const lang = window.localStorage.getItem("language") ?? "en";

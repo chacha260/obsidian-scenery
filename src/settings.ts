@@ -157,6 +157,30 @@ export class ScenerySettingTab extends PluginSettingTab {
       );
   }
 
+  private filterText = "";
+  private filterType = "";
+
+  private matchesFilter(item: WallpaperItem) {
+    if (this.filterType && item.type !== this.filterType) return false;
+    const needle = this.filterText.trim().toLowerCase();
+    return !needle || item.name.toLowerCase().includes(needle) || item.source.toLowerCase().includes(needle);
+  }
+
+  /** A collapsible group of settings. Which groups are closed is remembered. */
+  private section(key: string, title: string): HTMLElement {
+    const { settings } = this.plugin;
+    const details = this.containerEl.createEl("details", { cls: "scenery-section" });
+    details.open = !settings.collapsed.includes(key);
+    details.createEl("summary", { text: title });
+    details.addEventListener("toggle", () => {
+      const closed = !details.open;
+      if (closed === settings.collapsed.includes(key)) return;
+      settings.collapsed = closed ? [...settings.collapsed, key] : settings.collapsed.filter((k) => k !== key);
+      void this.plugin.saveSettings();
+    });
+    return details.createDiv();
+  }
+
   /** The element that scrolls the settings, if it is scrolled at all. */
   private scroller(): HTMLElement | null {
     for (let el: HTMLElement | null = this.containerEl; el; el = el.parentElement) {
@@ -245,11 +269,17 @@ export class ScenerySettingTab extends PluginSettingTab {
     if (!folder.isRoot() && (await hasManifest(this.app, folder.path))) {
       const manifest = await loadManifest(this.app, folder.path).catch(() => null);
       if (manifest?.type === "scene") {
-        // An exported scene comes back as an ordinary, editable scene.
-        const item: WallpaperItem = { id: uid(), name: manifest.name || folder.name, type: "scene", source: "", scene: importScene(manifest, folder.path) };
-        s.items.push(item);
-        new Notice(t("notice.added", { n: 1 }));
+        // An exported scene comes back as an ordinary, editable scene that stays linked to its folder.
+        let item = s.items.find((i) => i.type === "scene" && i.folder === folder.path);
+        if (item) {
+          item.scene = importScene(manifest, folder.path);
+        } else {
+          item = { id: uid(), name: manifest.name || folder.name, type: "scene", source: "", scene: importScene(manifest, folder.path), folder: folder.path };
+          s.items.push(item);
+          new Notice(t("notice.added", { n: 1 }));
+        }
         await plugin.setActive(item.id);
+        plugin.reloadWallpaper();
         this.display();
       } else {
         void this.addAndShow([folder.path], "package", manifest?.name || folder.name);
@@ -288,7 +318,6 @@ export class ScenerySettingTab extends PluginSettingTab {
     const restoreScroll = () => {
       if (scroller) scroller.scrollTop = scrollTop;
     };
-    this.clearPreviews();
     containerEl.empty();
 
     new Setting(containerEl)
@@ -302,69 +331,98 @@ export class ScenerySettingTab extends PluginSettingTab {
       );
 
     // ---- Library ----
-    new Setting(containerEl).setName(t("set.library")).setHeading();
-    if (!s.items.length) containerEl.createEl("p", { text: t("set.library.empty"), cls: "setting-item-description" });
-    s.items.forEach((item, index) => {
-      const active = item.id === s.activeId;
-      const row = new Setting(containerEl)
-        .setName(item.name)
-        .setDesc(
-          (item.type === "scene"
-            ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
-            : `${t(`type.${item.type}`)} · ${item.source}`) + (item.look ? ` · ${t("set.hasLook")}` : "")
-        );
-      this.thumbnail(row, item);
-      reorderable(row.settingEl, "scenery-library", index, (from, to) => {
-        moveItem(s.items, from, to);
-        void this.commit(true).then(() => this.display());
-      });
-      if (item.type === "scene") {
+    let el = this.section("library", t("set.library"));
+    const listEl = el.createDiv();
+    const renderList = () => {
+      this.clearPreviews();
+      listEl.empty();
+      let shown = 0;
+      s.items.forEach((item, index) => {
+        if (!this.matchesFilter(item)) return;
+        shown++;
+        const active = item.id === s.activeId;
+        const row = new Setting(listEl)
+          .setName(item.name)
+          .setDesc(
+            (item.type === "scene"
+              ? `${t("type.scene")} · ${t("set.layerCount", { n: item.scene?.length ?? 0 })}`
+              : `${t(`type.${item.type}`)} · ${item.source}`) +
+            (item.folder ? ` · ${item.folder}` : "") +
+            (item.look ? ` · ${t("set.hasLook")}` : "")
+          );
+        this.thumbnail(row, item);
+        reorderable(row.settingEl, "scenery-library", index, (from, to) => {
+          moveItem(s.items, from, to);
+          void this.commit(true).then(() => this.display());
+        });
+        if (item.type === "scene") {
+          row.addExtraButton((b) =>
+            b
+              .setIcon("layers")
+              .setTooltip(t("cmd.editScene"))
+              .onClick(() => {
+                this.closeSettings();
+                void plugin.openEditor(item.id);
+              })
+          );
+        }
         row.addExtraButton((b) =>
           b
-            .setIcon("layers")
-            .setTooltip(t("cmd.editScene"))
+            .setIcon("pencil")
+            .setTooltip(t("set.rename"))
             .onClick(() => {
-              this.closeSettings();
-              void plugin.openEditor(item.id);
+              new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), (name) => {
+                item.name = name;
+                void this.commit(true).then(() => this.display());
+              }).open();
             })
         );
-      }
-      row.addExtraButton((b) =>
-        b
-          .setIcon("pencil")
-          .setTooltip(t("set.rename"))
-          .onClick(() => {
-            new NameModal(this.app, t("set.rename"), item.name, t("set.rename"), (name) => {
-              item.name = name;
-              void this.commit(true).then(() => this.display());
-            }).open();
-          })
-      );
-      row
-        .addButton((b) => {
-          b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
-          if (active) b.setCta();
-          b.onClick(async () => {
-            await plugin.setActive(item.id);
-            this.display();
-          });
-        })
-        .addExtraButton((b) =>
-          b
-            .setIcon("trash-2")
-            .setTooltip(t("set.remove"))
-            .onClick(async () => {
-              s.items = s.items.filter((i) => i.id !== item.id);
-              if (active) s.activeId = s.items[0]?.id ?? null;
-              await this.commit(true);
+        row
+          .addButton((b) => {
+            b.setButtonText(active ? t("set.active") : t("set.use")).setDisabled(active);
+            if (active) b.setCta();
+            b.onClick(async () => {
+              await plugin.setActive(item.id);
               this.display();
-            })
-        );
-      row.settingEl.addClass("scenery-item");
-      row.settingEl.toggleClass("is-active", active);
-    });
+            });
+          })
+          .addExtraButton((b) =>
+            b
+              .setIcon("trash-2")
+              .setTooltip(t("set.remove"))
+              .onClick(async () => {
+                // The notice it shows can bring the wallpaper back; redraw then too.
+                await plugin.removeItem(item.id, () => this.display());
+                this.display();
+              })
+          );
+        row.settingEl.addClass("scenery-item");
+        row.settingEl.toggleClass("is-active", active);
+      });
+      if (!shown) listEl.createEl("p", { text: s.items.length ? t("set.filter.none") : t("set.library.empty"), cls: "setting-item-description" });
+    };
+    new Setting(el)
+      .setName(t("set.filter"))
+      .addText((text) => {
+        text.setPlaceholder(t("set.filter.placeholder")).setValue(this.filterText);
+        text.onChange((v) => {
+          this.filterText = v;
+          // Only the list is rebuilt, so the field keeps its focus while typing.
+          renderList();
+        });
+      })
+      .addDropdown((d) => {
+        d.addOption("", t("set.filter.all"));
+        for (const type of ["image", "video", "web", "effect", "scene", "package"] as WallpaperType[]) d.addOption(type, t(`type.${type}`));
+        d.setValue(this.filterType).onChange((v) => {
+          this.filterType = v;
+          renderList();
+        });
+      });
+    el.appendChild(listEl);
+    renderList();
 
-    const addRow = new Setting(containerEl).setName(t("set.add")).setDesc(t("set.add.desc"));
+    const addRow = new Setting(el).setName(t("set.add")).setDesc(t("set.add.desc"));
     // Many buttons: stack them under the label and let them wrap instead of overflowing.
     addRow.settingEl.addClass("scenery-add");
     addRow
@@ -417,9 +475,9 @@ export class ScenerySettingTab extends PluginSettingTab {
     // ---- Appearance ----
     // These settings are shared by default; a wallpaper can be given its own set.
     const look: Look = active?.look ?? s;
-    new Setting(containerEl).setName(active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance")).setHeading();
+    el = this.section("appearance", active?.look ? t("set.appearance.own", { name: active.name }) : t("set.appearance"));
     if (active) {
-      new Setting(containerEl)
+      new Setting(el)
         .setName(t("set.ownLook"))
         .setDesc(t("set.ownLook.desc"))
         .addToggle((tg) =>
@@ -433,8 +491,8 @@ export class ScenerySettingTab extends PluginSettingTab {
         );
     }
     const appearance = (key: "dim" | "panelTint" | "blur" | "brightness" | "saturation" | "parallax", name: string, range: [number, number, number], desc?: string) =>
-      this.slider(containerEl, key, name, range, desc, false, look, active?.look ? s : DEFAULT_SETTINGS);
-    new Setting(containerEl)
+      this.slider(el, key, name, range, desc, false, look, active?.look ? s : DEFAULT_SETTINGS);
+    new Setting(el)
       .setName(t("set.fit"))
       .setDesc(t("set.fit.desc"))
       .addDropdown((d) =>
@@ -454,11 +512,11 @@ export class ScenerySettingTab extends PluginSettingTab {
     appearance("parallax", t("set.parallax"), [0, 40, 1], t("set.parallax.desc"));
 
     // ---- Playback ----
-    new Setting(containerEl).setName(t("set.playback")).setHeading();
-    this.slider(containerEl, "volume", t("set.volume"), [0, 100, 1], t("set.volume.desc"));
-    this.slider(containerEl, "playbackRate", t("set.rate"), [0.25, 2, 0.05]);
-    this.slider(containerEl, "fps", t("set.fps"), [10, 60, 5], t("set.fps.desc"));
-    new Setting(containerEl)
+    el = this.section("playback", t("set.playback"));
+    this.slider(el, "volume", t("set.volume"), [0, 100, 1], t("set.volume.desc"));
+    this.slider(el, "playbackRate", t("set.rate"), [0.25, 2, 0.05]);
+    this.slider(el, "fps", t("set.fps"), [10, 60, 5], t("set.fps.desc"));
+    new Setting(el)
       .setName(t("set.pauseOnBlur"))
       .setDesc(t("set.pauseOnBlur.desc"))
       .addToggle((tg) =>
@@ -468,7 +526,7 @@ export class ScenerySettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
+    new Setting(el)
       .setName(t("set.popouts"))
       .setDesc(t("set.popouts.desc"))
       .addToggle((tg) =>
@@ -480,20 +538,40 @@ export class ScenerySettingTab extends PluginSettingTab {
       );
 
     // ---- Slideshow ----
-    new Setting(containerEl).setName(t("set.slideshow")).setHeading();
-    new Setting(containerEl).setName(t("set.slideshow.enable")).addToggle((tg) =>
+    el = this.section("slideshow", t("set.slideshow"));
+    new Setting(el).setName(t("set.slideshow.enable")).addToggle((tg) =>
       tg.setValue(s.slideshow).onChange(async (v) => {
         s.slideshow = v;
         await this.commit(true);
       })
     );
-    this.slider(containerEl, "intervalMinutes", t("set.interval"), [1, 120, 1], undefined, true);
-    new Setting(containerEl).setName(t("set.shuffle")).addToggle((tg) =>
+    this.slider(el, "intervalMinutes", t("set.interval"), [1, 120, 1], undefined, true);
+    new Setting(el).setName(t("set.shuffle")).addToggle((tg) =>
       tg.setValue(s.shuffle).onChange(async (v) => {
         s.shuffle = v;
         await this.commit(true);
       })
     );
+
+    // ---- Per-theme wallpapers ----
+    el = this.section("theme", t("set.theme"));
+    const choices: Record<string, string> = { "": t("set.theme.none") };
+    for (const item of s.items) choices[item.id] = item.name;
+    for (const mode of ["light", "dark"] as const) {
+      new Setting(el)
+        .setName(t(`set.theme.${mode}`))
+        .setDesc(t("set.theme.desc"))
+        .addDropdown((d) =>
+          d
+            .addOptions(choices)
+            .setValue(s.themeWallpapers[mode] && choices[s.themeWallpapers[mode]] ? s.themeWallpapers[mode] : "")
+            .onChange(async (v) => {
+              s.themeWallpapers[mode] = v;
+              await plugin.saveSettings();
+              plugin.applyThemeWallpaper();
+            })
+        );
+    }
 
     restoreScroll();
   }

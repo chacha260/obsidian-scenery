@@ -19,7 +19,8 @@ Animated wallpapers behind your Obsidian workspace, in the spirit of Wallpaper E
 
 ## Features
 
-- **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything.
+- **Library** with thumbnails. Add vault files, a whole folder, or a URL or absolute path. Drag rows to reorder, rename anything, filter by name or type. Removing a wallpaper can be undone from the notice that appears.
+- **Wallpaper by theme**: pick one wallpaper for the light theme and one for the dark theme; Scenery switches when the theme does.
 - **Slideshow**: switch on a timer, in order or shuffled, with a cross-fade.
 - **Appearance**: readability dimming, sidebar tint, blur, brightness, saturation, fit mode, mouse parallax. Shared by all wallpapers, or set per wallpaper with **Give this wallpaper its own appearance**.
 - **Battery-friendly**: videos and effects stop while no Obsidian window is focused.
@@ -55,6 +56,8 @@ The export button next to the scene's name (or the command **Export scene to a f
 
 To import, put the folder in a vault and choose it with **Vault folder** in the library. It arrives as an ordinary, editable scene.
 
+An imported or exported scene stays **linked** to its folder: when `scenery.json` there changes (for example, when the Studio saves into it), the scene in Obsidian is replaced with the new version. Edits made in Obsidian's scene editor since the last export are lost when that happens, so export first if you want to keep them.
+
 ## Packages: write a wallpaper in HTML and JavaScript
 
 The command **Scenery: Create wallpaper package** creates a working example in `Scenery/<name>/`.
@@ -82,7 +85,7 @@ A folder containing a Wallpaper Engine **web** wallpaper (`project.json`) can be
 
 - **Scene mode**: a large preview with a mock-up of Obsidian on top, so you can judge readability. Drop images and videos onto the page, drag a layer on the preview to move it, scroll to resize it, and edit everything else in the side panel.
 - **Package mode**: edit `index.html` and `scenery.json` next to the running page. The settings your package declares appear as controls, and you can switch theme, accent colour and pause to see how the page responds.
-- **Save to folder** (Chrome, Edge and other Chromium browsers): choose your vault's `Scenery` folder once and the Studio writes the wallpaper there. After you add that folder in Obsidian with **Vault folder**, saving a package again reloads the wallpaper in Obsidian. A scene is copied in when you add it, so add it again to pick up later changes.
+- **Save to folder** (Chrome, Edge and other Chromium browsers): choose your vault's `Scenery` folder once and the Studio writes the wallpaper there. After you add that folder in Obsidian with **Vault folder**, saving again from the Studio updates the wallpaper in Obsidian, for packages and scenes alike.
 - **Download .zip** works in every browser. Unpack it into your vault.
 - **Open folder** loads a scene or package back in, including scenes exported from Obsidian.
 

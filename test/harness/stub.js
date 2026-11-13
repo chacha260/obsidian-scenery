@@ -21,13 +21,26 @@ export function patchWindow(win) {
   P.empty = function () { this.replaceChildren(); };
 }
 patchWindow(window);
+// Obsidian also gives fragments these helpers, and exposes the focused window's document.
+DocumentFragment.prototype.createSpan = function (o) { return mk("span", o, this); };
+DocumentFragment.prototype.createEl = function (tag, o) { return mk(tag, o, this); };
+window.activeDocument = document;
 
 export class TFile {
   constructor(path) { this.path = path; this.name = path.split("/").pop(); this.basename = this.name.replace(/\.[^.]*$/, ""); }
 }
 export class TFolder {}
 export class WorkspaceLeaf {}
-export class Notice { constructor(message) { (window.__notices ||= []).push(String(message)); } }
+export class Notice {
+  constructor(message) {
+    // Fragments are kept in the page so tests can press buttons inside them.
+    this.el = mk("div", { cls: "notice" }, document.body);
+    this.el.hidden = true;
+    this.el.append(message);
+    (window.__notices ||= []).push(this.el.textContent);
+  }
+  hide() { this.el.remove(); }
+}
 export const Platform = { resourcePathPrefix: location.origin + "/", isDesktopApp: true };
 export const normalizePath = (p) => p.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
 export const setIcon = (el, name) => { el.dataset.icon = name; };

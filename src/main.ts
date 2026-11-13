@@ -2,7 +2,7 @@ import { FuzzySuggestModal, Notice, Plugin, TFile, debounce, normalizePath } fro
 import { EDITOR_VIEW, SceneEditorView } from "./editor";
 import { t } from "./i18n";
 import { loadManifest, MANIFEST_FILE, NoteInfo, PackageManifest } from "./package";
-import { ensureFolder, exportScene, safeName } from "./sceneio";
+import { ensureFolder, exportScene, importScene, safeName } from "./sceneio";
 import { NameModal } from "./pickers";
 import { Renderer } from "./renderer";
 import { TEMPLATE_HTML, templateManifest } from "./template";
@@ -31,6 +31,11 @@ export default class SceneryPlugin extends Plugin {
   private renderers = new Map<Window, Renderer>();
   private userPaused = false;
   private slideshowTimer: number | null = null;
+  private wasDark = false;
+  /** Folders of linked scenes whose manifest changed on disk. */
+  private changedFolders = new Set<string>();
+  /** Our own export writes the manifest too; that must not come back as an update. */
+  private ignoreLinkedUntil = 0;
   /** Scene currently open in the editor panel. */
   editingId: string | null = null;
   private saveSoon = debounce(() => void this.saveSettings(), 500, true);
@@ -76,7 +81,14 @@ export default class SceneryPlugin extends Plugin {
         );
       })
     );
-    this.registerEvent(this.app.workspace.on("css-change", () => this.all((r) => r.themeChanged())));
+    this.registerEvent(this.app.workspace.on("css-change", () => {
+        this.all((r) => r.themeChanged());
+        const dark = this.isDark();
+        if (dark !== this.wasDark) {
+          this.wasDark = dark;
+          this.applyThemeWallpaper();
+        }
+      }));
     this.registerEvent(this.app.workspace.on("file-open", () => this.all((r) => r.noteChanged())));
 
     this.addCommand({
@@ -97,7 +109,16 @@ export default class SceneryPlugin extends Plugin {
     });
     // Authoring loop: saving a file of the active package reloads the wallpaper.
     const reloadSoon = debounce(() => this.reloadWallpaper(), 400, true);
+    const relinkSoon = debounce(() => void this.updateLinkedScenes(), 400, true);
     const onFileChange = (file: { path: string }) => {
+      // A scene linked to a folder follows that folder, e.g. when the Studio saves into it.
+      if (file.path.endsWith(`/${MANIFEST_FILE}`) && Date.now() > this.ignoreLinkedUntil) {
+        const folder = file.path.slice(0, -MANIFEST_FILE.length - 1);
+        if (this.settings.items.some((i) => i.type === "scene" && i.folder === folder)) {
+          this.changedFolders.add(folder);
+          relinkSoon();
+        }
+      }
       const active = this.activeItem;
       if (!this.settings.enabled || !active) return;
       const folders =
@@ -121,6 +142,7 @@ export default class SceneryPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("window-close", (_workspaceWindow, win) => this.detachWindow(win)));
 
     this.app.workspace.onLayoutReady(() => {
+      this.wasDark = this.isDark();
       this.syncWindows();
       this.refresh();
     });
@@ -174,6 +196,8 @@ export default class SceneryPlugin extends Plugin {
   async loadSettings() {
     const data = (await this.loadData()) as Partial<ScenerySettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    this.settings.themeWallpapers = { ...DEFAULT_SETTINGS.themeWallpapers, ...data?.themeWallpapers };
+    this.settings.collapsed = [...(data?.collapsed ?? [])];
     this.settings.items = (data?.items ?? DEFAULT_SETTINGS.items).map((i) => ({
       ...i,
       // Fill in fields that older versions did not save.
@@ -241,12 +265,70 @@ export default class SceneryPlugin extends Plugin {
     return folder;
   }
 
+  private isDark() {
+    return activeDocument.body.classList.contains("theme-dark");
+  }
+
+  /** Switch to the wallpaper assigned to the current theme, if there is one. */
+  applyThemeWallpaper() {
+    const id = this.settings.themeWallpapers[this.isDark() ? "dark" : "light"];
+    if (id && id !== this.settings.activeId && this.settings.items.some((i) => i.id === id)) void this.setActive(id);
+  }
+
+  /** Remove a wallpaper and offer to bring it back. `onUndo` runs after it has been restored. */
+  async removeItem(id: string, onUndo?: () => void) {
+    const s = this.settings;
+    const index = s.items.findIndex((i) => i.id === id);
+    if (index < 0) return;
+    const [item] = s.items.splice(index, 1);
+    const wasActive = s.activeId === id;
+    if (wasActive) s.activeId = s.items[0]?.id ?? null;
+    await this.saveSettings();
+    this.refresh();
+
+    const message = new DocumentFragment();
+    message.createSpan({ text: t("notice.removed", { name: item.name }) });
+    const undo = message.createEl("button", { text: t("notice.undo"), cls: "scenery-undo" });
+    const notice = new Notice(message, 10_000);
+    undo.addEventListener("click", () => {
+      notice.hide();
+      if (s.items.some((i) => i.id === item.id)) return;
+      s.items.splice(Math.min(index, s.items.length), 0, item);
+      if (wasActive) s.activeId = item.id;
+      void this.saveSettings().then(() => {
+        this.refresh();
+        onUndo?.();
+      });
+    });
+  }
+
+  /** Re-read linked scenes whose folder changed. */
+  private async updateLinkedScenes() {
+    const folders = [...this.changedFolders];
+    this.changedFolders.clear();
+    for (const folder of folders) {
+      const manifest = await loadManifest(this.app, folder).catch(() => null);
+      if (manifest?.type !== "scene") continue;
+      for (const item of this.settings.items) {
+        if (item.type !== "scene" || item.folder !== folder) continue;
+        item.scene = importScene(manifest, folder);
+        // A full reload, not a patch: a file may have been replaced under the same name.
+        if (item.id === this.settings.activeId) this.reloadWallpaper();
+      }
+    }
+    await this.saveSettings();
+    for (const leaf of this.app.workspace.getLeavesOfType(EDITOR_VIEW)) {
+      if (leaf.view instanceof SceneEditorView) leaf.view.render();
+    }
+  }
+
   /** Write a scene to a folder in the vault so it can be backed up or shared. */
   async exportScene(id: string): Promise<string | null> {
     const item = this.settings.items.find((i) => i.id === id && i.type === "scene");
     const safe = item && safeName(item.name);
     if (!item || !safe) return null;
-    const folder = normalizePath(`${this.settings.packageFolder || "Scenery"}/${safe}`);
+    // A linked scene goes back to the folder it is linked to.
+    const folder = item.folder ?? normalizePath(`${this.settings.packageFolder || "Scenery"}/${safe}`);
     try {
       // Re-exporting over an earlier export is fine; overwriting anything else is not.
       if (await this.app.vault.adapter.exists(folder)) {
@@ -256,7 +338,10 @@ export default class SceneryPlugin extends Plugin {
           return null;
         }
       }
+      this.ignoreLinkedUntil = Date.now() + 3000;
       await exportScene(this.app, item, folder);
+      item.folder = folder;
+      await this.saveSettings();
     } catch (e) {
       console.error("Scenery: export failed", e);
       new Notice(`${t("scene.exportFailed")} ${String(e)}`);

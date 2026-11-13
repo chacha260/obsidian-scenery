@@ -13,6 +13,8 @@ export interface WallpaperItem {
   values?: Record<string, unknown>;
   /** Packages: the user allowed this wallpaper to learn which note is open. */
   allowNote?: boolean;
+  /** Scenes: the vault folder this scene was imported from or exported to. Changes there update it. */
+  folder?: string;
   /** Appearance settings of its own. When absent, the shared appearance settings apply. */
   look?: Look;
 }
@@ -111,6 +113,10 @@ export interface ScenerySettings {
   packageFolder: string;
   /** Also show the wallpaper in pop-out windows. */
   popouts: boolean;
+  /** Wallpaper ids to switch to when the theme turns light or dark. Empty = leave as is. */
+  themeWallpapers: { light: string; dark: string };
+  /** Keys of the settings sections the user has folded away. */
+  collapsed: string[];
 }
 
 /** The appearance settings a wallpaper can override for itself. */
@@ -150,6 +156,8 @@ export const DEFAULT_SETTINGS: ScenerySettings = {
   shuffle: false,
   packageFolder: "Scenery",
   popouts: true,
+  themeWallpapers: { light: "", dark: "" },
+  collapsed: [],
 };
 
 export const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg"];

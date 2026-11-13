@@ -79,7 +79,8 @@ export function importScene(manifest: PackageManifest, folder: string): SceneLay
   return (manifest.layers ?? []).map((layer) => ({
     ...newLayer(layer.kind, layer.name),
     ...layer,
-    id: uid(),
+    // Ids are kept so that re-importing an updated folder patches the scene instead of rebuilding it.
+    id: layer.id || uid(),
     source: layer.source?.startsWith("./") ? normalizePath(`${folder}/${layer.source.slice(2)}`) : layer.source ?? "",
   }));
 }

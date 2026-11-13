@@ -242,6 +242,56 @@ check("turning it off returns to the shared appearance", (await dimVar()) === sh
 await shot("library");
 
 // ---------------------------------------------------------------------------
+section("Undo, filter, sections, theme wallpapers, linked scenes");
+await openSettings();
+const before2 = await run(() => ({ ids: plugin.settings.items.map((i) => i.id), active: plugin.settings.activeId }));
+await run(() => { const rows = [...document.querySelectorAll("#panel .scenery-item")]; rows.find((r) => r.classList.contains("is-active")).querySelector('button[data-icon="trash-2"]').click(); }); await wait(300);
+check("removing the active wallpaper moves on to another", (await run(() => plugin.settings.items.length)) === before2.ids.length - 1 && (await run(() => plugin.settings.activeId)) !== before2.active);
+await run(() => [...document.querySelectorAll(".notice .scenery-undo")].at(-1).click()); await wait(300);
+const after2 = await run(() => ({ ids: plugin.settings.items.map((i) => i.id), active: plugin.settings.activeId }));
+check("undo puts it back in the same place and makes it active again", JSON.stringify(after2) === JSON.stringify(before2), after2);
+check("the settings list shows it again", (await page.locator("#panel .scenery-item").count()) === before2.ids.length);
+
+const total = await page.locator("#panel .scenery-item").count();
+const find = page.locator("#panel .setting-item").filter({ hasText: "Find" });
+await find.locator("input[type=text]").fill("rain"); await wait(100);
+check("typing in the filter narrows the list and keeps the field focused", (await page.locator("#panel .scenery-item").count()) === 1 && (await run(() => document.activeElement?.type)) === "text");
+await find.locator("input[type=text]").fill(""); await find.locator("select").selectOption("scene"); await wait(100);
+const scenesShown = await page.locator("#panel .scenery-item").count();
+check("the type filter shows only that type", scenesShown > 0 && scenesShown === (await run(() => plugin.settings.items.filter((i) => i.type === "scene").length)));
+await find.locator("select").selectOption(""); await wait(100);
+check("clearing the filter shows everything", (await page.locator("#panel .scenery-item").count()) === total);
+
+await page.locator("#panel details.scenery-section > summary").filter({ hasText: "Playback" }).click(); await wait(200);
+check("folding a section is remembered", JSON.stringify(await run(() => plugin.settings.collapsed)) === '["playback"]' && JSON.stringify(await run(() => __saved.collapsed)) === '["playback"]');
+await openSettings();
+check("it stays folded when the settings are rebuilt", await run(() => !document.querySelectorAll("#panel details.scenery-section")[2].open && document.querySelectorAll("#panel details.scenery-section")[0].open));
+await page.locator("#panel details.scenery-section > summary").filter({ hasText: "Playback" }).click();
+
+const themeRows = page.locator("#panel .setting-item").filter({ hasText: "When the theme is" });
+await themeRows.nth(0).locator("select").selectOption("effect-snow");
+await themeRows.nth(1).locator("select").selectOption("effect-rain"); await wait(200);
+check("assigning the current theme's wallpaper applies it", (await run(() => plugin.settings.activeId)) === "effect-rain");
+const setTheme = (dark) => run((d) => { document.body.classList.toggle("theme-dark", d); document.body.classList.toggle("theme-light", !d); __workspaceOn["css-change"].forEach((f) => f()); }, dark);
+await setTheme(false); await wait(200);
+check("switching to the light theme switches the wallpaper", (await run(() => plugin.settings.activeId)) === "effect-snow");
+await run(() => plugin.setActive("effect-aurora")); await run(() => __workspaceOn["css-change"].forEach((f) => f())); await wait(100);
+check("a manual choice is kept while the theme stays the same", (await run(() => plugin.settings.activeId)) === "effect-aurora");
+await setTheme(true); await wait(200);
+check("switching back to dark switches again", (await run(() => plugin.settings.activeId)) === "effect-rain");
+await run(() => { plugin.settings.themeWallpapers = { light: "", dark: "" }; });
+
+const linked = await run(async () => { const scene = plugin.settings.items.find((i) => i.type === "scene" && i.folder); await plugin.setActive(scene.id); return { id: scene.id, folder: scene.folder, layers: scene.scene.length }; });
+check("an exported scene is linked to its folder", linked.folder === "Scenery/Scene 1", linked);
+await wait(3100); // let the guard against our own export pass
+await run((folder) => { const path = folder + "/scenery.json"; const m = JSON.parse(__mem.get(path)); m.layers = m.layers.slice(0, 2); m.layers[0].color = "#112233"; __mem.set(path, JSON.stringify(m)); __vaultOn.modify.forEach((f) => f({ path })); }, linked.folder);
+await wait(1800);
+const relinked = await run((id) => { const scene = plugin.settings.items.find((i) => i.id === id); return { layers: scene.scene.length, color: scene.scene[0].color, shown: document.querySelectorAll(".scenery-layer.is-visible .scenery-sl").length }; }, linked.id);
+check("saving into that folder updates the scene and the wallpaper", relinked.layers === 2 && relinked.color === "#112233" && relinked.shown === 2, relinked);
+const dupes = await run((folder) => plugin.settings.items.filter((i) => i.folder === folder).length, linked.folder);
+check("the scene is updated in place, not duplicated", dupes === 1, dupes);
+
+// ---------------------------------------------------------------------------
 section("Pop-out windows");
 await run(() => plugin.setActive("effect-starfield"));
 const pop = await run(() => new Promise((resolve) => { const f = document.createElement("iframe"); f.id = "popout"; f.style.cssText = "position:fixed;right:0;bottom:0;width:400px;height:240px;z-index:9"; f.onload = () => { patchWindow(f.contentWindow); __workspaceOn["window-open"].forEach((fn) => fn({}, f.contentWindow)); resolve(true); }; f.src = "/popout.html"; document.body.append(f); }));
